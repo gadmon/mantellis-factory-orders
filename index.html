@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mantellis Factory Orders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: sticky header + tabs, one working surface below; board is a dense scannable table. */
+:root{
+  --bg:#f4f5f2; --panel:#ffffff; --ink:#1b2b28; --muted:#5f6f6b; --line:#dde2de;
+  --accent:#0e6b5c; --accent-ink:#ffffff; --accent-soft:#e1f0ec;
+  --good:#2a7d3f; --good-soft:#e2f2e6; --warn:#a86300; --warn-soft:#fbefd5; --crit:#b3261e; --crit-soft:#fbe4e2;
+  --display:'Bricolage Grotesque','Hanken Grotesk',system-ui,sans-serif; --body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121a18; --panel:#1b2623; --ink:#e6eeeb; --muted:#9aaca7; --line:#2d3b37;
+  --accent:#4cc3ad; --accent-ink:#0b1a17; --accent-soft:#1f3a34;
+  --good:#6cd08a; --good-soft:#1e3626; --warn:#f0b14a; --warn-soft:#3b2f16; --crit:#ff8d85; --crit-soft:#41211f; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#121a18; --panel:#1b2623; --ink:#e6eeeb; --muted:#9aaca7; --line:#2d3b37;
+  --accent:#4cc3ad; --accent-ink:#0b1a17; --accent-soft:#1f3a34;
+  --good:#6cd08a; --good-soft:#1e3626; --warn:#f0b14a; --warn-soft:#3b2f16; --crit:#ff8d85; --crit-soft:#41211f; color-scheme:dark;}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.4}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+button,input,select,textarea{font:inherit;color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+header{background:var(--panel);border-bottom:1px solid var(--line)}
+.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;padding:14px 0}
+.top h1{font-size:22px;letter-spacing:-.01em}
+.top .sub{color:var(--muted);font-size:13px}
+.who{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.who label{font-size:12px;color:var(--muted)}
+nav{display:flex;gap:2px;overflow-x:auto}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;cursor:pointer;color:var(--muted);font-weight:600;white-space:nowrap}
+nav button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+nav button:hover{color:var(--ink)}
+nav .badge{background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:0 7px;font-size:12px;margin-left:6px}
+main{padding:18px 0 60px}
+.banner{border:1px solid var(--line);background:var(--warn-soft);color:var(--ink);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:14px}
+.banner.info{background:var(--accent-soft)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:16px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.tile .n{font-family:var(--display);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.tile .l{color:var(--muted);font-size:13px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:12px}
+.bar .f{display:flex;flex-direction:column;gap:3px}
+.bar label{font-size:12px;color:var(--muted)}
+input,select,textarea{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:7px 9px;min-height:36px}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+textarea{width:100%;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:7px;padding:7px 12px;font-weight:600;cursor:pointer;min-height:36px}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.btn.sm{min-height:30px;padding:4px 9px;font-size:13px}
+.btn.danger{background:transparent;color:var(--crit);border:1px solid var(--crit)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.card h2{font-size:18px;margin-bottom:8px}
+.card h3{font-size:15px;margin-bottom:6px}
+.scroll{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--bg);position:sticky;top:0;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right}
+td .nm{font-weight:600}
+td .meta{color:var(--muted);font-size:12px}
+.prog{min-width:170px}
+.track{height:10px;background:var(--line);border-radius:6px;overflow:hidden}
+.fill{height:100%;background:var(--muted)}
+.fill.near{background:var(--warn)} .fill.go{background:var(--good)}
+.ptxt{font-size:12px;color:var(--muted);margin-top:3px}
+.chip{display:inline-block;border-radius:12px;padding:1px 9px;font-size:12px;font-weight:600;white-space:nowrap}
+.chip.go{background:var(--good-soft);color:var(--good)} .chip.near{background:var(--warn-soft);color:var(--warn)}
+.chip.far{background:var(--bg);color:var(--muted);border:1px solid var(--line)} .chip.info{background:var(--accent-soft);color:var(--accent)}
+.chip.crit{background:var(--crit-soft);color:var(--crit)}
+.qty{width:70px}
+.ordprog{display:flex;align-items:center;gap:8px;min-width:200px}.ordprog .track{width:110px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.muted{color:var(--muted)} .small{font-size:13px}
+.spark{display:block}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;z-index:9;max-width:90%}
+.tot td{border:0;padding:3px 10px} .tot tr:last-child td{font-weight:700;border-top:1px solid var(--line)}
+.ord{border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:10px}
+.ord>summary{list-style:none;cursor:pointer;padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.ord>summary::-webkit-details-marker{display:none}
+.ord .body{padding:0 14px 12px}
+.empty{padding:26px;text-align:center;color:var(--muted)}
+@media (max-width:640px){.top h1{font-size:19px}}
+@media (prefers-reduced-motion:no-preference){.fill{transition:width .3s}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="top">
+    <div><h1>Mantellis Factory Orders</h1><div class="sub" id="conn"></div></div>
+    <div class="who" id="who"></div>
+  </div>
+  <nav id="tabs" role="tablist"></nav>
+</div></header>
+<main><div class="wrap" id="main"></div></main>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+const CATALOG_FALLBACK = [];
+const DAY = 86400000, WEEK = 7 * DAY;
+const S = {
+  catalog: [], catalogFromDb: false, pars: {}, parsLoaded: false,
+  settings: { defaultPar: 10, vat: 15, deliveryFee: 0, leadDays: 10, closeFrom: '2026-11-23', reopen: '2027-01-05', lastDelivery: '2026-12-20', ratePerKg: 0, stores: [{ id: 'belvedere-square', name: 'Belvedere Square', fee: null, region: 'Western Cape' },{ id: 'blaauwberg', name: 'Blaauwberg', fee: null, region: 'Western Cape' },{ id: 'durbanville', name: 'Durbanville', fee: null, region: 'Western Cape' },{ id: 'fish-hoek', name: 'Fish Hoek', fee: null, region: 'Western Cape' },{ id: 'george', name: 'George', fee: null, region: 'Western Cape' },{ id: 'kenilworth-centre', name: 'Kenilworth Centre', fee: null, region: 'Western Cape' },{ id: 'mossel-bay', name: 'Mossel Bay', fee: null, region: 'Western Cape' },{ id: 'mutualpark', name: 'Mutualpark', fee: null, region: 'Western Cape' },{ id: 'paarl', name: 'Paarl', fee: null, region: 'Western Cape' },{ id: 'palmyra-junction', name: 'Palmyra Junction', fee: null, region: 'Western Cape' },{ id: 'rylands', name: 'Rylands', fee: null, region: 'Western Cape' },{ id: 'sanlam-direct', name: 'Sanlam Direct', fee: null, region: 'Western Cape' },{ id: 'somerset-west', name: 'Somerset West', fee: null, region: 'Western Cape' },{ id: 'stellenbosch', name: 'Stellenbosch', fee: null, region: 'Western Cape' },{ id: 'westlake', name: 'Westlake', fee: null, region: 'Western Cape' },{ id: 'fourways', name: 'Fourways', fee: null, region: 'Gauteng' },{ id: 'simmonds-street', name: 'Simmonds Street', fee: null, region: 'Gauteng' },{ id: 'ballito', name: 'Ballito', fee: null, region: 'KwaZulu-Natal' },{ id: 'kloof', name: 'Kloof', fee: null, region: 'KwaZulu-Natal' }] },
+  orders: [], board: {}, hist: [], profiles: [], profile: null, auth: 'boot', authMsg: '', authEm: '', cart: {}, tab: 'board',
+  f: { q: '', list: 'all', state: 'all', sort: 'close' },
+  of: { store: 'all', status: 'open' }, aview: 'product',
+  me: { storeId: null }, admin: false, userId: null,
+  demo: false, conn: 'connecting', method: 'collect', needBy: '', notes: '', fcMsg: '', importLog: '', exportText: '',
+  adminQ: '', up: null
+};
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = (n) => 'R ' + (Number(n) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const num = (n) => (Number(n) || 0).toLocaleString('en-ZA', { maximumFractionDigits: 1 });
+const slug = (s) => String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const weekIdx = (ms) => Math.floor((ms - 4 * DAY) / WEEK);
+const ymd = (ms) => new Date(ms).toISOString().slice(0, 10);
+const addBD = (ms, n) => { let d = ms, c = 0; while (c < n) { d += DAY; const w = new Date(d).getUTCDay(); if (w !== 0 && w !== 6) c++; } return d; };
+const fdate = (ms) => new Date(ms).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+const subBD = (ms, n) => { let d = ms, c = 0; while (c < n) { d -= DAY; const w = new Date(d).getUTCDay(); if (w !== 0 && w !== 6) c++; } return d; };
+const afterLastDelivery = (ms) => !!(S.settings.lastDelivery && ymd(ms) > S.settings.lastDelivery);
+const isClosed = (ms) => { const s = S.settings, k = ymd(ms == null ? Date.now() : ms); return !!(s.closeFrom && s.reopen && k >= s.closeFrom && k < s.reopen); };
+function windowBanner() {
+  const s = S.settings; if (!s.closeFrom || !s.reopen) return '';
+  const now = Date.now(), cf = Date.parse(s.closeFrom + 'T00:00:00Z'), ro = Date.parse(s.reopen + 'T00:00:00Z'), ld = s.lastDelivery ? Date.parse(s.lastDelivery + 'T00:00:00Z') : 0;
+  const dl = ld ? ' Stock that is ready is collected or delivered until ' + fdate(ld) + '. A product must start production by ' + fdate(subBD(ld, s.leadDays)) + ' to be ready by then; anything later is held until January.' : '';
+  if (isClosed()) return '<div class="banner">The factory is closed to new orders until ' + fdate(ro) + '.' + dl + '</div>';
+  const left = Math.ceil((cf - now) / DAY);
+  if (left > 0 && left <= 60) return '<div class="banner">The factory stops taking new orders on ' + fdate(cf) + ' (' + left + ' day' + (left === 1 ? '' : 's') + ' left) and reopens on ' + fdate(ro) + '. Products still short of par when it closes will not be produced until January. Production takes ' + s.leadDays + ' business days from the day it starts.' + dl + '</div>';
+  return '';
+}
+const LISTS = { collection: 'Collection', corporate: 'Corporate', hamper: 'Hamper' };
+const STATUS = { pending: 'Waiting for production', production: 'In production', ready: 'Ready', done: 'Collected / delivered', cancelled: 'Cancelled' };
+
+/* ---------- Supabase ---------- */
+let sb = null;
+const q = async (p) => { const r = await p; if (r.error) throw r.error; return r.data; };
+async function pageAll(build) { const out = []; for (let from = 0; ; from += 1000) { const rows = await q(build().range(from, from + 999)); out.push(...rows); if (rows.length < 1000) break; } return out; }
+async function run(p, ok) {
+  if (S.demo) { toast('Demo mode: nothing is saved.'); return false; }
+  try { const r = await p; if (r && r.error) throw r.error; await refresh(); if (ok) toast(ok); return r || true; }
+  catch (e) { toast((e && e.message) || 'Could not save.'); return false; }
+}
+
+/* ---------- helpers on the catalogue and orders ---------- */
+const cat = () => S.catalog.length ? S.catalog : CATALOG_FALLBACK;
+const prodMap = () => { const m = {}; cat().forEach((p) => { m[p.code] = p; }); return m; };
+const parOf = (p) => p.kind === 'supply' ? 0 : (S.pars[p.code] > 0 ? S.pars[p.code] : S.settings.defaultPar);
+const isPlaceholderPar = (p) => p.kind !== 'supply' && !(S.pars[p.code] > 0);
+const storeName = (id) => { const s = S.settings.stores.find((x) => x.id === id); return s ? s.name : id; };
+const feeFor = (id) => { const s = S.settings.stores.find((x) => x.id === id); return s && s.fee != null && s.fee !== '' ? Number(s.fee) : Number(S.settings.deliveryFee) || 0; };
+
+const DEFAULTS = { defaultPar: 10, vat: 15, leadDays: 10, closeFrom: '', reopen: '', lastDelivery: '', ratePerKg: 0 };
+function mapOrders(rows) {
+  return rows.map((o) => ({
+    id: o.id, uid: o.store_id, storeId: o.store_id, storeName: storeName(o.store_id), createdAt: Date.parse(o.created_at), createdBy: o.created_by,
+    method: o.method, fee: o.delivery_cost == null ? null : Number(o.delivery_cost), palletKg: o.pallet_kg == null ? null : Number(o.pallet_kg), needBy: o.need_by || '', notes: o.notes || '',
+    lines: (o.order_lines || []).slice().sort((a, b) => a.id - b.id).map((l) => ({ id: l.id, code: l.code, cases: l.cases, price: Number(l.price), status: l.status, filled: l.filled || 0, releasedAt: l.released_at ? Date.parse(l.released_at) : null }))
+  }));
+}
+async function loadAll() {
+  const [stores, prods, set] = await Promise.all([
+    q(sb.from('stores').select('*').eq('active', true).order('name')),
+    pageAll(() => sb.from('products').select('*').order('code')),
+    q(sb.from('settings').select('data').eq('id', 1))
+  ]);
+  S.settings = Object.assign({}, DEFAULTS, (set[0] && set[0].data) || {}, { stores: stores.map((s) => ({ id: s.id, name: s.name, region: s.region, fee: null })) });
+  S.catalog = prods.map((p) => ({ code: p.code, name: p.name, lists: p.lists || [], category: p.category, pack: p.pack, perCase: p.per_case, casePrice: Number(p.case_price), unitPrice: p.unit_price, rrp: p.rrp, barcode: p.barcode, kind: p.kind, par: p.par, active: p.active }));
+  S.pars = {}; S.catalog.forEach((p) => { if (p.par > 0) S.pars[p.code] = p.par; });
+  S.catalogFromDb = true;
+  S.orders = mapOrders(await pageAll(() => sb.from('orders').select('*, order_lines(*)').order('created_at', { ascending: false }).order('id')));
+  if (S.admin) {
+    S.hist = (await pageAll(() => sb.from('history').select('order_date,store_id,code,cases').order('id'))).map((r) => ({ t: Date.parse(r.order_date + 'T12:00:00Z'), store: r.store_id, code: r.code, cases: r.cases }));
+    S.profiles = await q(sb.from('profiles').select('*').order('email'));
+  } else {
+    const b = await q(sb.rpc('get_board')); S.board = {}; b.forEach((r) => { S.board[r.code] = { cases: Number(r.cases), stores: Number(r.stores) }; });
+  }
+}
+async function refresh() { if (S.demo || S.auth !== 'in') return; try { await loadAll(); S.conn = 'ok'; } catch (e) { S.conn = 'error'; } draw(); }
+
+function derive() {
+  const pend = {}, mine = {}, by = {}, stc = {}, seen = {};
+  let openCases = 0, openValue = 0;
+  S.orders.forEach((o) => (o.lines || []).forEach((l) => {
+    if (l.status === 'pending') {
+      if (S.admin) { pend[l.code] = (pend[l.code] || 0) + l.cases; (by[l.code] = by[l.code] || []).push({ store: o.storeName || storeName(o.storeId), cases: l.cases, method: o.method }); const k = l.code + '|' + (o.uid || o.storeId); if (!seen[k]) { seen[k] = 1; stc[l.code] = (stc[l.code] || 0) + 1; } }
+      if (o.storeId === S.me.storeId) mine[l.code] = (mine[l.code] || 0) + l.cases;
+    }
+    if (l.status !== 'done' && l.status !== 'cancelled') { if (S.admin) openCases += l.cases; openValue += l.cases * (l.price || 0); }
+  }));
+  if (!S.admin) Object.keys(S.board || {}).forEach((c) => { const b = S.board[c]; pend[c] = b.cases; stc[c] = b.stores; openCases += b.cases; });
+  S.d = { pend, mine, by, stc, openCases, openValue };
+}
+function stateOf(p) {
+  const par = parOf(p), pend = S.d.pend[p.code] || 0;
+  if (par === 0) return { key: 'stock', label: 'Ships from stock', pct: 0, par, pend, left: 0 };
+  const pct = Math.min(pend / par, 1);
+  if (pend >= par) return { key: 'go', label: 'In production queue', pct: 1, par, pend, left: 0 };
+  return { key: pct >= 0.6 ? 'near' : 'far', label: pct >= 0.6 ? 'Close' : 'Waiting', pct, par, pend, left: par - pend };
+}
+function orderStatus(o) {
+  const ls = (o.lines || []).filter((l) => l.status !== 'cancelled');
+  if (!ls.length) return 'cancelled';
+  if (ls.every((l) => l.status === 'done')) return 'done';
+  if (ls.every((l) => l.status === 'done' || l.status === 'ready')) return 'ready';
+  if (ls.some((l) => l.status === 'production' || l.status === 'ready' || l.status === 'done')) return 'production';
+  return 'pending';
+}
+const orderTotals = (o) => {
+  const sub = (o.lines || []).filter((l) => l.status !== 'cancelled').reduce((a, l) => a + l.cases * (l.price || 0), 0);
+  const fee = o.method === 'deliver' && o.fee != null ? Number(o.fee) || 0 : 0, tbc = o.method === 'deliver' && o.fee == null;
+  const vat = (sub + fee) * (Number(S.settings.vat) || 0) / 100;
+  return { sub, fee, vat, total: sub + fee + vat, tbc };
+};
+
+/* ---------- forecasting ---------- */
+function events() {
+  const ev = [];
+  S.hist.forEach((h) => { if (h.t && h.code) ev.push({ t: h.t, store: h.store, code: h.code, cases: h.cases }); });
+  S.orders.forEach((o) => (o.lines || []).forEach((l) => { if (l.status !== 'cancelled') ev.push({ t: o.createdAt, store: o.storeId, code: l.code, cases: l.cases }); }));
+  return ev;
+}
+function forecastAll() {
+  const ev = events(), cur = weekIdx(Date.now()), series = {}, first = {};
+  ev.forEach((e) => {
+    const i = weekIdx(e.t) - (cur - 51);
+    if (i < 0 || i > 51) { if (weekIdx(e.t) < cur - 51) first[e.code] = Math.min(first[e.code] ?? 1e9, weekIdx(e.t)); return; }
+    (series[e.code] = series[e.code] || new Array(52).fill(0))[i] += e.cases;
+    first[e.code] = Math.min(first[e.code] ?? 1e9, weekIdx(e.t));
+  });
+  const out = {};
+  Object.keys(series).forEach((code) => {
+    const s = series[code], trailArr = s.slice(43, 51), trail = trailArr.reduce((a, b) => a + b, 0) / 8;
+    const sd = Math.sqrt(trailArr.reduce((a, b) => a + (b - trail) ** 2, 0) / 8), cv = trail > 0 ? sd / trail : 0;
+    const span = cur - first[code], hasYear = span >= 50;
+    let f4 = 0;
+    for (let k = 1; k <= 4; k++) {
+      const ly = (s[Math.max(k - 2, 0)] + s[k - 1] + s[Math.min(k, 51)]) / 3;
+      f4 += hasYear ? 0.6 * trail + 0.4 * ly : trail;
+    }
+    let conf = span < 8 ? 'low' : (span < 40 ? 'medium' : 'high');
+    if (cv > 1.2 && conf !== 'low') conf = conf === 'high' ? 'medium' : 'low';
+    out[code] = { trail, f4, cv, span, hasYear, conf, spark: s.slice(-13), total: s.reduce((a, b) => a + b, 0) };
+  });
+  return out;
+}
+
+/* ---------- order actions ---------- */
+async function patchLines(code, from, to) {
+  const upd = { status: to }; if (to === 'production') upd.released_at = new Date().toISOString();
+  const r = await run(sb.from('order_lines').update(upd).eq('code', code).eq('status', from).select('id'));
+  return r && r.data ? r.data.length : 0;
+}
+async function submitOrder() {
+  const p = prodMap(), codes = Object.keys(S.cart).filter((c) => S.cart[c] > 0 && p[c]);
+  if (isClosed() && !S.admin) return toast('The factory is closed to new orders until ' + fdate(Date.parse(S.settings.reopen + 'T00:00:00Z')) + '.');
+  if (!S.me.storeId) return toast(S.admin ? 'Choose a store to order for.' : 'Your login is not linked to a store yet. Ask HQ.');
+  if (!codes.length) return toast('Add at least one product.');
+  const r = await run(sb.rpc('place_order', { p_store: S.admin ? S.me.storeId : null, p_method: S.method, p_need_by: S.needBy || null, p_notes: S.notes || '', p_lines: codes.map((c) => ({ code: c, cases: Math.round(S.cart[c]) })) }));
+  if (r) { S.cart = {}; S.notes = ''; S.needBy = ''; saveCart(); S.tab = 'mine'; toast('Order sent to the factory.'); draw(true); }
+}
+const saveCart = () => { try { localStorage.setItem('mantellis-cart', JSON.stringify(S.cart)); } catch (e) {} };
+
+/* ---------- rendering ---------- */
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 3500); }
+
+function tabsFor() {
+  const cartN = Object.values(S.cart).filter((v) => v > 0).length;
+  const t = [['board', 'Production board'], ['order', 'New order' + (cartN ? '<span class="badge">' + cartN + '</span>' : '')], ['mine', 'My orders']];
+  if (S.admin) t.push(['all', 'All orders'], ['forecast', 'Forecast'], ['admin', 'Setup']);
+  return t;
+}
+function drawHeader() {
+  const inn = S.auth === 'in';
+  $('#conn').textContent = S.demo ? 'Demo data. Nothing here is saved.' : S.conn === 'error' ? 'Cannot reach the database. Retrying.' : (inn && S.profile ? S.profile.email : '');
+  if (!inn) { $('#who').innerHTML = ''; $('#tabs').innerHTML = ''; return; }
+  const stores = S.settings.stores.slice().sort((a, b) => a.name.localeCompare(b.name));
+  $('#who').innerHTML = (S.admin
+    ? '<div><label for="storeSel">Ordering as</label><br><select id="storeSel" data-act="store"><option value="">Choose a store</option>' + stores.map((s) => '<option value="' + esc(s.id) + '"' + (s.id === S.me.storeId ? ' selected' : '') + '>Mantelli\'s Direct ' + esc(s.name) + '</option>').join('') + '</select></div>'
+    : '<div><span class="small muted">Your store</span><br><b>Mantelli\'s Direct ' + esc(storeName(S.me.storeId)) + '</b></div>') +
+    '<span class="chip ' + (S.admin ? 'info' : 'far') + '">' + (S.admin ? 'Factory / HQ' : 'Franchise') + '</span><button class="btn ghost sm" data-act="signout">Sign out</button>';
+  $('#tabs').innerHTML = tabsFor().map((t) => '<button role="tab" data-act="tab" data-v="' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '">' + t[1] + '</button>').join('');
+}
+
+function boardRows() {
+  const q = S.f.q.trim().toLowerCase();
+  let rows = cat().filter((p) => p.active !== false).map((p) => ({ p, s: stateOf(p) }));
+  rows = rows.filter(({ p, s }) =>
+    (S.f.list === 'all' || p.lists.includes(S.f.list)) &&
+    (S.f.state === 'all' || (S.f.state === 'open' ? s.pend > 0 : s.key === S.f.state)) &&
+    (!q || (p.code + ' ' + p.name + ' ' + p.category).toLowerCase().includes(q)));
+  const rank = { go: 0, near: 1, far: 2, stock: 3 };
+  if (S.f.sort === 'close') rows.sort((a, b) => (b.s.pend > 0) - (a.s.pend > 0) || rank[a.s.key] - rank[b.s.key] || b.s.pct - a.s.pct || a.p.code.localeCompare(b.p.code));
+  else if (S.f.sort === 'name') rows.sort((a, b) => a.p.name.localeCompare(b.p.name));
+  else rows.sort((a, b) => a.p.code.localeCompare(b.p.code, undefined, { numeric: true }));
+  return rows;
+}
+function lastChance() {
+  const s = S.settings; if (!s.closeFrom || isClosed()) return '';
+  const left = Math.ceil((Date.parse(s.closeFrom + 'T00:00:00Z') - Date.now()) / DAY); if (left <= 0 || left > 14) return '';
+  const rows = cat().filter((p) => p.active !== false).map((p) => ({ p, s: stateOf(p) })).filter((r) => r.s.pend > 0 && (r.s.key === 'near' || r.s.key === 'far')).sort((a, b) => b.s.pct - a.s.pct).slice(0, 8);
+  if (!rows.length) return '';
+  return '<div class="card"><h2>Last chance before orders close</h2><p class="small muted">' + left + ' day' + (left === 1 ? '' : 's') + ' left. These products have orders waiting but are still short of par. Adding the missing cases gets them produced before the break.</p><div class="scroll"><table><tbody>' +
+    rows.map(({ p, s }) => '<tr><td><div class="nm">' + esc(p.name) + '</div><div class="meta">' + esc(p.code) + '</div></td><td class="num">' + num(s.pend) + ' of ' + s.par + '</td><td class="num">' + money(s.left * p.casePrice) + '</td><td><button class="btn sm" data-act="topup" data-code="' + esc(p.code) + '" data-n="' + s.left + '">+' + num(s.left) + ' cases to trigger</button></td></tr>').join('') + '</tbody></table></div></div>';
+}
+function viewBoard() {
+  derive();
+  const all = cat().filter((p) => p.active !== false).map(stateOf);
+  const go = all.filter((s) => s.key === 'go').length, near = all.filter((s) => s.key === 'near').length;
+  const rows = boardRows();
+  const anyPlaceholder = cat().some(isPlaceholderPar);
+  let h = windowBanner() + lastChance();
+  if (anyPlaceholder) h += '<div class="banner">Production pars are placeholders (' + S.settings.defaultPar + ' cases) until the factory confirms the real number for each product. HQ sets them in Setup.</div>';
+  h += '<div class="tiles">' +
+    '<div class="tile"><div class="n">' + go + '</div><div class="l">Products at or over par, in the production queue</div></div>' +
+    '<div class="tile"><div class="n">' + near + '</div><div class="l">Products within 40% of par</div></div>' +
+    '<div class="tile"><div class="n">' + num(S.d.openCases) + '</div><div class="l">' + (S.admin ? 'Cases on open orders' : 'Cases waiting for production, all stores') + '</div></div>' +
+    '<div class="tile"><div class="n">' + money(S.d.openValue) + '</div><div class="l">' + (S.admin ? 'Open order value, excl. VAT' : 'Your open order value, excl. VAT') + '</div></div>' +
+    '<div class="tile"><div class="n" style="font-size:20px">' + fdate(addBD(Date.now(), S.settings.leadDays)) + '</div><div class="l">Ready by, if a product reaches par and starts today (' + S.settings.leadDays + ' business days)</div></div></div>';
+  h += '<div class="bar">' +
+    '<div class="f"><label for="fq">Search</label><input id="fq" data-act="fq" value="' + esc(S.f.q) + '" placeholder="Code or name"></div>' +
+    '<div class="f"><label for="fl">Price list</label><select id="fl" data-act="fl"><option value="all">All lists</option>' + Object.keys(LISTS).map((k) => '<option value="' + k + '"' + (S.f.list === k ? ' selected' : '') + '>' + LISTS[k] + '</option>').join('') + '</select></div>' +
+    '<div class="f"><label for="fs">Show</label><select id="fs" data-act="fs">' + [['all', 'Everything'], ['open', 'Has open orders'], ['go', 'In production queue'], ['near', 'Close to par'], ['far', 'Waiting']].map((o) => '<option value="' + o[0] + '"' + (S.f.state === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></div>' +
+    '<div class="f"><label for="fo">Sort</label><select id="fo" data-act="fo"><option value="close"' + (S.f.sort === 'close' ? ' selected' : '') + '>Closest to production</option><option value="code"' + (S.f.sort === 'code' ? ' selected' : '') + '>Code</option><option value="name"' + (S.f.sort === 'name' ? ' selected' : '') + '>Name</option></select></div>' +
+    '<div class="small muted">' + rows.length + ' products</div><button class="btn ghost sm" data-act="tab" data-v="order">Upload an order sheet</button></div>';
+  if (!rows.length) return h + '<div class="empty">No products match.</div>';
+  h += '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">Case price</th><th>Progress to par</th><th class="num">Your store</th><th>Add cases</th></tr></thead><tbody>';
+  rows.slice(0, 200).forEach(({ p, s }) => {
+    const mine = S.d.mine[p.code] || 0, inCart = S.cart[p.code] || 0;
+    const bar = s.key === 'stock' ? '<span class="chip far">Ships from stock</span>' :
+      '<div class="track" role="img" aria-label="' + s.pend + ' of ' + s.par + ' cases"><div class="fill ' + s.key + '" style="width:' + Math.round(s.pct * 100) + '%"></div></div>' +
+      '<div class="ptxt"><b>' + num(s.pend) + '</b> of ' + s.par + (isPlaceholderPar(p) ? '*' : '') + ' cases' + (S.d.stc[p.code] ? ' · ' + S.d.stc[p.code] + (S.d.stc[p.code] === 1 ? ' store' : ' stores') + ' waiting' : '') + ' · ' + (s.key === 'go' ? '<span class="chip go">Production queue · ready ~' + fdate(addBD(Date.now(), S.settings.leadDays)) + '</span>' : '<b>' + num(s.left) + '</b> to go') + '</div>';
+    const topUp = s.left > 0 ? '<button class="btn ghost sm" data-act="topup" data-code="' + esc(p.code) + '" data-n="' + s.left + '" title="Adds the cases still needed to reach par">+' + num(s.left) + ' to trigger</button>' : '';
+    h += '<tr><td><div class="nm">' + esc(p.name) + '</div><div class="meta">' + esc(p.code) + ' · ' + esc(p.pack) + (p.perCase ? ' · ' + esc(p.perCase) + (/^\d+$/.test(p.perCase) ? ' per case' : '') : '') + ' · ' + p.lists.map((l) => LISTS[l]).join(' / ') + '</div></td>' +
+      '<td class="num">' + money(p.casePrice) + '</td><td class="prog">' + bar + '</td>' +
+      '<td class="num">' + (mine ? num(mine) : '<span class="muted">0</span>') + '</td>' +
+      '<td><div class="row"><input class="qty" type="number" min="1" step="1" inputmode="numeric" id="q-' + esc(p.code) + '" aria-label="Cases of ' + esc(p.name) + '" value="' + (inCart || '') + '" data-act="cartq" data-code="' + esc(p.code) + '" placeholder="0">' + topUp + '</div></td></tr>';
+  });
+  h += '</tbody></table></div>';
+  if (rows.length > 200) h += '<div class="small muted" style="margin-top:6px">Showing the first 200. Use search to narrow.</div>';
+  if (anyPlaceholder) h += '<div class="small muted" style="margin-top:8px">* placeholder par</div>';
+  return h;
+}
+
+const norm = (s) => String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const colName = (i) => { let s = '', n = i + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+const readBuf = (f) => f.arrayBuffer ? f.arrayBuffer() : new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsArrayBuffer(f); });
+async function loadSheet(file) {
+  if (!window.XLSX) return toast('The spreadsheet reader did not load. Check your connection and try again.');
+  if (file.size > 5e6) return toast('That file is over 5 MB.');
+  try {
+    const wb = XLSX.read(await readBuf(file), { type: 'array' }), sheets = [];
+    wb.SheetNames.forEach((n) => {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' });
+      const h = rows.findIndex((r) => r.some((c) => /^\s*code\s*$/i.test(String(c)))); if (h < 0) return;
+      const hdr = rows[h].map((c) => String(c));
+      let q = hdr.findIndex((c) => /order|qty|quant/i.test(c) || (/\bcases?\b/i.test(c) && !/per|price/i.test(c)));
+      if (q < 0) { let last = -1; hdr.forEach((c, i) => { if (/price|barcode|units/i.test(c)) last = i; }); q = last + 1; }
+      const pc = hdr.findIndex((c) => /case price/i.test(c));
+      let store = '';
+      for (let i = 0; i < h; i++) { const r = rows[i], k = r.findIndex((c) => /store\s*name/i.test(String(c))); if (k >= 0) { const own = String(r[k]).replace(/.*store\s*name\s*:?/i, '').trim(); store = own || String(r.slice(k + 1).find((c) => String(c).trim()) || '').trim(); } }
+      sheets.push({ name: n, rows, h, q, pc, hdr, store, ncol: Math.max(hdr.length, q + 1) });
+    });
+    S.up = { file: file.name, sheets, mode: 'replace' };
+    if (!sheets.length) { toast('No product table found. The sheet needs a header row with "Code".'); S.up = null; }
+  } catch (e) { toast('Could not read that file. Use an Excel (.xls, .xlsx) or CSV file.'); S.up = null; }
+  draw(true);
+}
+function upLines() {
+  const out = { lines: [], warn: [], stores: [] }; if (!S.up) return out;
+  const byName = {}, p = prodMap(); cat().forEach((x) => { byName[norm(x.name)] = x; });
+  const acc = {};
+  S.up.sheets.forEach((sh) => {
+    if (sh.store && !out.stores.includes(sh.store)) out.stores.push(sh.store);
+    for (let i = sh.h + 1; i < sh.rows.length; i++) {
+      const r = sh.rows[i], raw = r[sh.q]; if (raw === '' || raw == null) continue;
+      const code = String(r[0] == null ? '' : r[0]).trim().toUpperCase(), name = String(r[1] == null ? '' : r[1]).trim();
+      if ((!code && !name) || /^total/i.test(name)) continue;
+      let q = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(',', '.'));
+      if (!(q > 0)) { if (String(raw).trim() && String(raw).trim() !== '0') out.warn.push(sh.name + ' row ' + (i + 1) + ': "' + raw + '" is not a quantity, skipped.'); continue; }
+      const pr = p[code] || byName[norm(name)];
+      if (!pr) { out.warn.push(sh.name + ' row ' + (i + 1) + ': ' + (code || name) + ' is not in the product list, skipped.'); continue; }
+      if (q !== Math.floor(q)) { out.warn.push(pr.code + ': ' + q + ' cases rounded up to ' + Math.ceil(q) + '.'); q = Math.ceil(q); }
+      const sp = sh.pc >= 0 ? Number(r[sh.pc]) : NaN;
+      if (sp > 0 && Math.abs(sp - pr.casePrice) / pr.casePrice > 0.005) out.warn.push(pr.code + ': the sheet price ' + money(sp) + ' differs from the current price ' + money(pr.casePrice) + '. The current price is used.');
+      acc[pr.code] = (acc[pr.code] || 0) + q;
+    }
+  });
+  Object.keys(acc).forEach((c) => out.lines.push({ pr: p[c], q: acc[c] }));
+  return out;
+}
+function matchStore(txt) {
+  const n = norm(txt).replace(/^mantellis? direct\s*/, ''); if (!n) return null;
+  let best = null; S.settings.stores.forEach((s) => { const sn = norm(s.name); if (sn && (n === sn || n.includes(sn)) && (!best || sn.length > norm(best.name).length)) best = s; });
+  return best;
+}
+function setStore(id) {
+  if (!S.admin) return;
+  S.me.storeId = id || null;
+  try { localStorage.setItem('mantellis-store', S.me.storeId || ''); } catch (er) {}
+}
+function uploadCard() {
+  let h = '<div class="card"><h2>Upload an order sheet</h2><p class="small muted">Fill in the quantity column of your usual Mantellis order sheet (Collection, Corporate or Hamper) and upload it. Quantities are read as cases. You will see a preview before anything is added to your order.</p>' +
+    '<div class="row"><input type="file" id="upl" data-act="upload" accept=".xls,.xlsx,.xlsm,.csv" aria-label="Order sheet file"></div>';
+  if (S.up) {
+    const r = upLines(), tot = r.lines.reduce((a, l) => a + l.q * l.pr.casePrice, 0);
+    h += '<h3 style="margin-top:12px">' + esc(S.up.file) + '</h3>';
+    S.up.sheets.forEach((sh, i) => {
+      h += '<div class="bar"><div class="f"><label for="uc' + i + '">Quantity column' + (S.up.sheets.length > 1 ? ' on ' + esc(sh.name) : '') + '</label><select id="uc' + i + '" data-act="upcol" data-i="' + i + '">' +
+        Array.from({ length: Math.min(sh.ncol + 1, Math.max(sh.q + 3, sh.hdr.reduce((m, c, i) => String(c).trim() ? i + 3 : m, 0))) }, (_, c) => '<option value="' + c + '"' + (c === sh.q ? ' selected' : '') + '>' + colName(c) + (sh.hdr[c] ? ' · ' + esc(String(sh.hdr[c]).slice(0, 24)) : ' · (no heading)') + '</option>').join('') + '</select></div></div>';
+    });
+    r.stores.forEach((s) => {
+      const m = matchStore(s);
+      if (m && S.me.storeId && m.id !== S.me.storeId) h += '<div class="banner">This sheet is for ' + esc(m.name) + ' but you are ordering as ' + esc(storeName(S.me.storeId)) + '.</div>';
+      else if (s && !m) h += '<div class="banner info">Store name on the sheet: ' + esc(s) + '. Choose your store at the top if it is not already selected.</div>';
+    });
+    if (!r.lines.length) h += '<div class="banner">No quantities found in column ' + esc(colName(S.up.sheets[0].q)) + '. Pick the column where you typed your cases.</div>';
+    else {
+      h += '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">Cases</th><th class="num">Line total</th></tr></thead><tbody>' +
+        r.lines.map((l) => '<tr><td><div class="nm">' + esc(l.pr.name) + '</div><div class="meta">' + esc(l.pr.code) + '</div></td><td class="num">' + l.q + '</td><td class="num">' + money(l.q * l.pr.casePrice) + '</td></tr>').join('') +
+        '</tbody></table></div><p class="small"><b>' + r.lines.length + '</b> products, ' + money(tot) + ' excl. VAT.</p>';
+      h += '<fieldset style="border:0;padding:0;margin:0 0 8px"><legend class="small muted">Add to your order</legend><div class="row"><label><input type="radio" name="um" data-act="upmode" value="replace"' + (S.up.mode === 'replace' ? ' checked' : '') + '> Replace what is in my order now</label><label><input type="radio" name="um" data-act="upmode" value="add"' + (S.up.mode === 'add' ? ' checked' : '') + '> Add to what is in my order now</label></div></fieldset>' +
+        '<div class="row"><button class="btn" data-act="upapply">Use these quantities</button><button class="btn ghost" data-act="updiscard">Discard</button></div>';
+    }
+    if (r.warn.length) h += '<div class="banner" style="margin-top:10px"><b>Check these:</b><ul style="margin:6px 0 0;padding-left:18px">' + r.warn.slice(0, 15).map((w) => '<li>' + esc(w) + '</li>').join('') + (r.warn.length > 15 ? '<li>and ' + (r.warn.length - 15) + ' more</li>' : '') + '</ul></div>';
+  }
+  return h + '</div>';
+}
+function viewOrder() {
+  derive();
+  const p = prodMap(), codes = Object.keys(S.cart).filter((c) => S.cart[c] > 0 && p[c]);
+  if (!codes.length) return uploadCard() + '<div class="card"><h2>New order</h2><p class="muted">Your order is empty. Enter case quantities on the Production board, or use "to trigger" to add exactly what a product needs to reach par.</p><button class="btn" data-act="tab" data-v="board">Go to the board</button></div>';
+  const lines = codes.map((c) => ({ code: c, cases: S.cart[c], price: p[c].casePrice, status: 'pending' }));
+  const t = orderTotals({ lines, method: S.method, fee: null });
+  const early = addBD(Date.now(), S.settings.leadDays);
+  let h = windowBanner() + uploadCard() + '<div class="grid2"><div class="card"><h2>Your order</h2><div class="scroll"><table><thead><tr><th>Product</th><th class="num">Cases</th><th class="num">Line total</th><th>Effect</th><th></th></tr></thead><tbody>';
+  codes.forEach((c) => {
+    const pr = p[c], par = parOf(pr), pend = S.d.pend[c] || 0, after = pend + S.cart[c];
+    const eff = par === 0 ? '<span class="muted small">Ships from stock</span>' :
+      pend >= par ? '<span class="chip go">Already queued</span>' : after >= par ? '<span class="chip go">Triggers production</span>' : '<span class="muted small">' + num(par - after) + ' still short of par</span>';
+    h += '<tr><td><div class="nm">' + esc(pr.name) + '</div><div class="meta">' + esc(c) + '</div></td><td class="num"><input class="qty" type="number" min="0" step="1" aria-label="Cases of ' + esc(pr.name) + '" value="' + S.cart[c] + '" data-act="cartq2" data-code="' + esc(c) + '"></td><td class="num">' + money(S.cart[c] * pr.casePrice) + '</td><td>' + eff + '</td><td><button class="btn danger sm" data-act="rm" data-code="' + esc(c) + '">Remove</button></td></tr>';
+  });
+  h += '</tbody></table></div></div><div class="card"><h2>Delivery and totals</h2>' +
+    '<fieldset style="border:0;padding:0;margin:0 0 10px"><legend class="small muted">How will you get this stock?</legend><div class="row">' +
+    '<label><input type="radio" name="m" data-act="method" value="collect"' + (S.method === 'collect' ? ' checked' : '') + '> I will collect</label>' +
+    '<label><input type="radio" name="m" data-act="method" value="deliver"' + (S.method === 'deliver' ? ' checked' : '') + '> Deliver to my store</label></div></fieldset>' +
+    (S.method === 'deliver' ? '<p class="small muted">Delivery is charged by pallet weight. HQ weighs the pallet when the order is ready and adds the cost to your order. It is not in the total below.</p>' : '') + '<div class="bar"><div class="f"><label for="nb">Needed by (optional)</label><input id="nb" type="date" data-act="needby" value="' + esc(S.needBy) + '"></div></div>' +
+    (S.needBy && Date.parse(S.needBy + 'T00:00:00Z') < early ? '<div class="banner">Production takes ' + S.settings.leadDays + ' business days once a product reaches par, so the earliest possible ready date is ' + fdate(early) + '. Later if a product is still short of par.</div>' : '') + '<div class="f"><label class="small muted" for="nt">Notes for the factory</label><textarea id="nt" rows="2" data-act="notes" style="font-family:inherit">' + esc(S.notes) + '</textarea></div>' +
+    '<table class="tot" style="margin:10px 0"><tr><td>Products (excl. VAT)</td><td class="num">' + money(t.sub) + '</td></tr>' +
+    (S.method === 'deliver' ? '<tr><td>Delivery</td><td class="num">Set by HQ</td></tr>' : '') +
+    '<tr><td>VAT ' + num(S.settings.vat) + '%</td><td class="num">' + money(t.vat) + '</td></tr><tr><td>Total</td><td class="num">' + money(t.total) + '</td></tr></table>' +
+    (S.me.storeId ? '' : '<div class="banner">Choose your store at the top before sending.</div>') +
+    '<div class="row"><button class="btn" data-act="submit"' + (S.me.storeId && (S.admin || !isClosed()) ? '' : ' disabled') + '>Send order to factory</button><button class="btn ghost" data-act="clearcart">Clear</button></div></div></div>';
+  return h;
+}
+
+const lineFilled = (l) => l.status === 'ready' || l.status === 'done' ? l.cases : (l.status === 'production' ? Math.min(l.filled || 0, l.cases) : 0);
+function orderProgress(o) {
+  const ls = (o.lines || []).filter((l) => l.status !== 'cancelled'), tot = ls.reduce((a, l) => a + l.cases, 0), f = ls.reduce((a, l) => a + lineFilled(l), 0);
+  return { tot, f, pct: tot ? Math.round(f / tot * 100) : 0 };
+}
+function orderCard(o, admin) {
+  const st = orderStatus(o), t = orderTotals(o), p = prodMap();
+  const mineOrAdmin = admin || o.storeId === S.me.storeId;
+  let h = '<details class="ord"><summary><b>' + esc(o.storeName || storeName(o.storeId)) + '</b><span class="muted small">' + esc(ymd(o.createdAt)) + '</span>' +
+    '<span class="chip ' + (st === 'pending' ? 'far' : st === 'cancelled' ? 'crit' : st === 'done' ? 'info' : 'go') + '">' + STATUS[st] + '</span>' +
+    (function () { const pg = orderProgress(o); return pg.tot ? '<span class="ordprog"><span class="track" role="img" aria-label="' + pg.f + ' of ' + pg.tot + ' cases filled"><span class="fill go" style="width:' + pg.pct + '%"></span></span><span class="small muted">' + num(pg.f) + ' of ' + num(pg.tot) + ' cases filled</span></span>' : ''; })() + '<span class="chip info">' + (o.method === 'deliver' ? 'Delivery' : 'Collection') + '</span>' + (o.needBy ? '<span class="small muted">Needed by ' + esc(o.needBy) + '</span>' : '') +
+    '<span style="margin-left:auto" class="num">' + money(t.total) + ' incl. VAT' + (t.tbc ? ' + delivery' : '') + '</span></summary><div class="body">';
+  h += '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">Cases</th><th class="num">Value</th><th>Status</th><th></th></tr></thead><tbody>';
+  (o.lines || []).forEach((l) => {
+    h += '<tr><td><div class="nm">' + esc(p[l.code] ? p[l.code].name : l.code) + '</div><div class="meta">' + esc(l.code) + '</div></td><td class="num">' + l.cases + '</td><td class="num">' + money(l.cases * (l.price || 0)) + '</td><td>' + STATUS[l.status] + (l.status !== 'pending' && l.status !== 'cancelled' ? '<div class="meta">' + lineFilled(l) + ' of ' + l.cases + ' cases filled</div>' : '') + (admin && l.status === 'production' ? '<div class="row" style="margin-top:4px"><input class="qty" type="number" min="0" max="' + l.cases + '" id="fl-' + l.id + '" aria-label="Cases filled for ' + esc(l.code) + '" value="' + (l.filled || 0) + '"><button class="btn ghost sm" data-act="savefill" data-lid="' + l.id + '" data-max="' + l.cases + '">Save filled</button></div>' : '') + (l.status === 'production' && l.releasedAt ? '<div class="meta">Ready by ~' + fdate(addBD(l.releasedAt, S.settings.leadDays)) + (afterLastDelivery(addBD(l.releasedAt, S.settings.leadDays)) ? ' (after the ' + fdate(Date.parse(S.settings.lastDelivery)) + ' cut-off, held to January)' : '') + '</div>' : '') + '</td><td>' +
+      (l.status === 'pending' && mineOrAdmin ? '<button class="btn danger sm" data-act="cancelline" data-lid="' + l.id + '">Cancel line</button>' : '') + '</td></tr>';
+  });
+  h += '</tbody></table></div>' + (o.notes ? '<p class="small"><b>Notes:</b> ' + esc(o.notes) + '</p>' : '') +
+    (mineOrAdmin ? '<div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="reorder" data-oid="' + esc(o.id) + '">Repeat this order</button></div>' : '') +
+    (o.method === 'deliver' ? (o.fee != null ? '<p class="small">Delivery: ' + money(o.fee) + ' excl. VAT' + (o.palletKg ? ' for ' + num(o.palletKg) + ' kg of pallet' : '') + ', set by HQ.</p>' : '<p class="small muted">Delivery cost to be set by HQ once the pallet is weighed.</p>') : '') +
+    (admin && o.method === 'deliver' ? '<div class="bar"><div class="f"><label for="kg-' + esc(o.id) + '">Pallet weight (kg)</label><input class="qty" type="number" min="0" id="kg-' + esc(o.id) + '" value="' + (o.palletKg || '') + '"></div><div class="f"><label for="fee-' + esc(o.id) + '">Delivery cost, excl. VAT (R)</label><input class="qty" style="width:110px" type="number" min="0" step="0.01" id="fee-' + esc(o.id) + '" value="' + (o.fee == null ? '' : o.fee) + '" placeholder="' + (S.settings.ratePerKg ? 'kg × rate' : '') + '"></div><button class="btn sm" data-act="savefee" data-oid="' + esc(o.id) + '">Save delivery cost</button></div>' : '') + '</div></details>';
+  return h;
+}
+function viewMine() {
+  derive();
+  if (!S.me.storeId) return '<div class="banner">Choose your store at the top to see its orders.</div>';
+  const list = S.orders.filter((o) => o.storeId === S.me.storeId).sort((a, b) => b.createdAt - a.createdAt);
+  return '<h2 style="margin-bottom:10px">Orders for ' + esc(storeName(S.me.storeId)) + '</h2>' + (list.length ? list.map((o) => orderCard(o, S.admin)).join('') : '<div class="empty">No orders yet.</div>');
+}
+
+function viewAll() {
+  derive();
+  const p = prodMap();
+  let h = windowBanner() + '<div class="row" style="margin-bottom:12px"><button class="btn ' + (S.aview === 'product' ? '' : 'ghost') + '" data-act="aview" data-v="product">By product (factory view)</button><button class="btn ' + (S.aview === 'order' ? '' : 'ghost') + '" data-act="aview" data-v="order">By order</button><button class="btn ghost" data-act="export">Copy order lines as CSV</button></div>';
+  if (S.exportText) h += '<div class="card"><h3>Order lines (CSV)</h3><textarea rows="6" readonly id="exp">' + esc(S.exportText) + '</textarea></div>';
+  if (S.aview === 'product') {
+    const codes = {};
+    S.orders.forEach((o) => (o.lines || []).forEach((l) => { if (l.status !== 'done' && l.status !== 'cancelled') (codes[l.code] = codes[l.code] || { pending: 0, production: 0, ready: 0, stores: {} })[l.status] += l.cases; }));
+    const rows = Object.keys(codes).map((c) => ({ c, p: p[c], v: codes[c] })).filter((r) => r.p).sort((a, b) => (b.v.pending / (parOf(b.p) || 1)) - (a.v.pending / (parOf(a.p) || 1)));
+    if (!rows.length) return h + '<div class="empty">No open orders.</div>';
+    h += '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">Par</th><th class="num">Waiting</th><th>Stores waiting</th><th class="num">In production</th><th class="num">Ready</th><th>Actions</th></tr></thead><tbody>';
+    rows.forEach(({ c, p: pr, v }) => {
+      const par = parOf(pr), by = (S.d.by[c] || []).reduce((m, x) => { m[x.store] = m[x.store] || { n: 0, d: 0 }; m[x.store].n += x.cases; if (x.method === 'deliver') m[x.store].d = 1; return m; }, {});
+      const can = par === 0 || v.pending >= par;
+      h += '<tr><td><div class="nm">' + esc(pr.name) + '</div><div class="meta">' + esc(c) + '</div></td><td class="num">' + (par || '–') + '</td><td class="num">' + num(v.pending) + '</td>' +
+        '<td class="small">' + Object.keys(by).map((s) => esc(s) + ' ' + by[s].n + (by[s].d ? ' (D)' : ' (C)')).join(', ') + '</td><td class="num">' + num(v.production) + '</td><td class="num">' + num(v.ready) + '</td><td><div class="row">' +
+        (v.pending ? '<button class="btn sm" data-act="release" data-code="' + esc(c) + '" data-ok="' + (can ? 1 : 0) + '">' + (can ? 'Start production' : 'Start early') + '</button>' : '') +
+        (v.production ? '<button class="btn ghost sm" data-act="mark" data-from="production" data-to="ready" data-code="' + esc(c) + '">Mark ready</button>' : '') +
+        (v.ready ? '<button class="btn ghost sm" data-act="mark" data-from="ready" data-to="done" data-code="' + esc(c) + '">Collected / delivered</button>' : '') + '</div></td></tr>';
+    });
+    h += '</tbody></table></div><p class="small muted" style="margin-top:8px">C = collect, D = delivery. Starting production moves every waiting case for that product, including cases above par.</p>';
+    return h;
+  }
+  let list = S.orders.slice().sort((a, b) => b.createdAt - a.createdAt);
+  h += '<div class="bar"><div class="f"><label for="os">Store</label><select id="os" data-act="os"><option value="all">All stores</option>' + S.settings.stores.map((s) => '<option value="' + esc(s.id) + '"' + (S.of.store === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></div>' +
+    '<div class="f"><label for="ost">Status</label><select id="ost" data-act="ost">' + [['open', 'Open'], ['all', 'All'], ['pending', 'Waiting'], ['production', 'In production'], ['ready', 'Ready'], ['done', 'Complete'], ['cancelled', 'Cancelled']].map((o) => '<option value="' + o[0] + '"' + (S.of.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></div></div>';
+  list = list.filter((o) => (S.of.store === 'all' || o.storeId === S.of.store) && (S.of.status === 'all' || (S.of.status === 'open' ? !['done', 'cancelled'].includes(orderStatus(o)) : orderStatus(o) === S.of.status)));
+  return h + (list.length ? list.map((o) => orderCard(o, true)).join('') : '<div class="empty">No orders match.</div>');
+}
+
+function spark(arr) {
+  const w = 78, hgt = 22, mx = Math.max(1, ...arr), bw = w / arr.length;
+  return '<svg class="spark" width="' + w + '" height="' + hgt + '" viewBox="0 0 ' + w + ' ' + hgt + '" role="img" aria-label="Cases per week, last 13 weeks">' +
+    arr.map((v, i) => { const bh = Math.max(v ? 2 : 0, v / mx * (hgt - 2)); return '<rect x="' + (i * bw + 1) + '" y="' + (hgt - bh) + '" width="' + (bw - 2) + '" height="' + bh + '" rx="1" fill="' + (i === arr.length - 1 ? 'var(--muted)' : 'var(--accent)') + '"/>'; }).join('') + '</svg>';
+}
+const closedWeeks = () => { const s = S.settings; return s.closeFrom && s.reopen ? Math.max(0, (Date.parse(s.reopen) - Date.parse(s.closeFrom)) / WEEK) : 0; };
+function viewForecast() {
+  derive();
+  const fc = forecastAll(), p = prodMap(), codes = Object.keys(fc).filter((c) => p[c]);
+  const ev = events(); const weeks = ev.length ? weekIdx(Date.now()) - weekIdx(Math.min(...ev.map((e) => e.t))) : 0;
+  let h = '<div class="card"><h2>Forecast from order history</h2><p class="small muted">Each product\'s expected demand for the next 4 weeks is its average over the last 8 complete weeks. When a full year of history exists, 40% of the weight moves to the same weeks last year, which picks up seasonal peaks such as Christmas hampers. The While closed column applies the weekly average to the ' + num(closedWeeks()) + ' weeks the factory is closed to orders, which shows what to get into production before it closes. History used: ' + (ev.length ? ev.length + ' order lines over ' + weeks + ' weeks' : 'none yet') + '.</p>' +
+    '<div class="row"><button class="btn ghost sm" data-act="demo">' + (S.demo ? 'Leave demo data' : 'Preview with demo data') + '</button></div></div>';
+  if (!codes.length) return h + '<div class="card"><h3>No history yet</h3><p>Orders placed through this hub build the history automatically. To start with past orders, import them below as CSV.</p></div>' + viewImport();
+  const rows = codes.map((c) => { const f = fc[c], pr = p[c], par = parOf(pr), pend = S.d.pend[c] || 0; return { c, pr, f, par, pend, gap: par ? Math.max(par - pend, 0) : 0 }; })
+    .sort((a, b) => b.f.f4 - a.f.f4);
+  const pre = rows.filter((r) => r.par && r.pend < r.par && r.f.f4 >= r.gap && r.f.f4 > 0).length;
+  h += '<div class="tiles"><div class="tile"><div class="n">' + pre + '</div><div class="l">Products likely to reach par within 4 weeks on forecast demand</div></div>' +
+    '<div class="tile"><div class="n">' + num(rows.reduce((a, r) => a + r.f.f4, 0)) + '</div><div class="l">Forecast cases, all products, next 4 weeks</div></div></div>';
+  h += '<div class="scroll"><table><thead><tr><th>Product</th><th>Last 13 weeks</th><th class="num">Avg / week</th><th class="num">Next 4 weeks</th><th class="num">While closed</th><th class="num">Par</th><th class="num">Waiting now</th><th>Outlook</th><th>Confidence</th></tr></thead><tbody>';
+  rows.slice(0, 150).forEach(({ c, pr, f, par, pend, gap }) => {
+    const out = !par ? '<span class="muted small">Stock item</span>' : pend >= par ? '<span class="chip go">Already queued</span>' : f.f4 >= gap ? '<span class="chip near">Reaches par in ' + (f.trail > 0 ? Math.max(1, Math.ceil(gap / f.trail)) : '?') + ' wk</span>' : '<span class="chip far">Not within 4 weeks</span>';
+    h += '<tr><td><div class="nm">' + esc(pr.name) + '</div><div class="meta">' + esc(c) + '</div></td><td>' + spark(f.spark) + '</td><td class="num">' + num(f.trail) + '</td><td class="num"><b>' + num(f.f4) + '</b></td><td class="num">' + num(f.trail * closedWeeks()) + '</td><td class="num">' + (par || '–') + '</td><td class="num">' + num(pend) + '</td><td>' + out + '</td><td>' + f.conf + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+  return h + viewImport();
+}
+function viewImport() {
+  return '<div class="card" style="margin-top:14px"><h2>Import past orders</h2><p class="small muted">One line per order line: <code>date, store name, product code, cases</code>, for example <code>2026-03-14, Somerset West, M720, 4</code>. Dates are YYYY-MM-DD. Unknown stores are added. Unknown product codes are skipped and listed.</p>' +
+    '<textarea id="imp" rows="6" placeholder="2026-03-14, Somerset West, M720, 4"></textarea><div class="row" style="margin-top:8px"><label class="small"><input type="checkbox" id="impReplace"> Replace all existing imported history</label><button class="btn" data-act="import">Import</button></div>' +
+    (S.importLog ? '<p class="small" style="white-space:pre-wrap">' + esc(S.importLog) + '</p>' : '') + '</div>';
+}
+
+function viewAdmin() {
+  const q = S.adminQ.trim().toLowerCase();
+  const items = cat().filter((p) => !q || (p.code + ' ' + p.name + ' ' + p.category).toLowerCase().includes(q));
+  let h = '<div class="grid2"><div class="card"><h2>Rules</h2>' +
+    '<div class="bar"><div class="f"><label for="sdp">Default par (cases)</label><input id="sdp" class="qty" type="number" min="1" value="' + S.settings.defaultPar + '"></div>' +
+    '<div class="f"><label for="svat">VAT %</label><input id="svat" class="qty" type="number" min="0" step="0.5" value="' + S.settings.vat + '"></div>' +
+    '<div class="f"><label for="srk">Delivery rate per kg (R, optional)</label><input id="srk" class="qty" type="number" min="0" step="0.01" value="' + (S.settings.ratePerKg || '') + '"></div>' +
+    '<div class="f"><label for="sld2">Last delivery / collection</label><input id="sld2" type="date" value="' + esc(S.settings.lastDelivery) + '"></div>' +
+    '<div class="f"><label for="sld">Lead time (business days)</label><input id="sld" class="qty" type="number" min="1" value="' + S.settings.leadDays + '"></div>' +
+    '<div class="f"><label for="scf">Orders close on</label><input id="scf" type="date" value="' + esc(S.settings.closeFrom) + '"></div>' +
+    '<div class="f"><label for="sro">Orders reopen on</label><input id="sro" type="date" value="' + esc(S.settings.reopen) + '"></div>' +
+    '<button class="btn" data-act="savesettings">Save</button></div><p class="small muted">The default par applies to any product without its own par. Delivery is charged per order by pallet weight: HQ enters the weight and cost on each delivery order under All orders. The rate per kg is only used to suggest the cost when you enter a weight.</p></div>' +
+    '<div class="card"><h2>Stores (' + S.settings.stores.length + ')</h2><div class="scroll" style="max-height:230px;overflow:auto"><table><thead><tr><th>Name</th><th>Region</th><th></th></tr></thead><tbody>' +
+    S.settings.stores.map((s) => '<tr><td>' + esc(s.name) + '</td><td class="small">' + esc(s.region || '') + '</td><td><button class="btn danger sm" data-act="rmstore" data-id="' + esc(s.id) + '">Remove</button></td></tr>').join('') +
+    '</tbody></table></div><div class="f" style="margin-top:8px"><label for="ns">Add stores (one per line, without "Mantelli\'s Direct")</label><textarea id="ns" rows="3" style="font-family:inherit"></textarea></div><button class="btn" style="margin-top:6px" data-act="addstores">Add</button></div></div>';
+  h += '<div class="card"><h2>Production pars</h2><p class="small muted">Cases of a product that must be on waiting orders before the factory starts a run. Leave blank to use the default. Packaging and supplies have no par.</p>' +
+    '<div class="bar"><div class="f"><label for="aq">Search</label><input id="aq" data-act="aq" value="' + esc(S.adminQ) + '" placeholder="Code, name or range"></div>' +
+    '<div class="f"><label for="bulk">Set par for all shown</label><input id="bulk" class="qty" type="number" min="1"></div><button class="btn ghost" data-act="bulkpar">Apply to ' + items.filter((p) => p.kind !== 'supply').length + '</button></div>' +
+    '<div class="scroll" style="max-height:480px;overflow:auto"><table><thead><tr><th>Product</th><th>Range</th><th class="num">Par (cases)</th></tr></thead><tbody>' +
+    items.slice(0, 150).map((p) => '<tr><td><div class="nm">' + esc(p.name) + '</div><div class="meta">' + esc(p.code) + '</div></td><td class="small">' + esc(p.category) + '</td><td class="num">' + (p.kind === 'supply' ? '<span class="muted">none</span>' : '<input class="qty" type="number" min="1" id="par-' + esc(p.code) + '" aria-label="Par for ' + esc(p.name) + '" value="' + (S.pars[p.code] || '') + '" placeholder="' + S.settings.defaultPar + '" data-act="par" data-code="' + esc(p.code) + '">') + '</td></tr>').join('') +
+    '</tbody></table></div></div>';
+  h += '<div class="card"><h2>Logins</h2><p class="small muted">Create each login in Supabase (Authentication, Users, Add user). It appears here after the first creation. Link store logins to their store, and give HQ staff the HQ role. Several logins can share one store and will see the same orders.</p><div class="scroll"><table><thead><tr><th>Email</th><th>Role</th><th>Store</th></tr></thead><tbody>' +
+    S.profiles.map((p) => '<tr><td>' + esc(p.email) + (p.id === S.userId ? ' <span class="chip info">you</span>' : '') + '</td><td><select aria-label="Role for ' + esc(p.email) + '" data-act="profrole" data-id="' + esc(p.id) + '"' + (p.id === S.userId ? ' disabled' : '') + '><option value="store"' + (p.role === 'store' ? ' selected' : '') + '>Store</option><option value="hq"' + (p.role === 'hq' ? ' selected' : '') + '>HQ</option></select></td><td><select aria-label="Store for ' + esc(p.email) + '" data-act="profstore" data-id="' + esc(p.id) + '"><option value="">Not linked</option>' + S.settings.stores.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => '<option value="' + esc(s.id) + '"' + (p.store_id === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></td></tr>').join('') + '</tbody></table></div></div>';
+  h += '<div class="card"><h2>Catalogue</h2><p class="small">' + cat().length + ' products from the three price lists. Codes shared by the Corporate and Hamper lists are one product. Prices and product changes are made in the database (Supabase Table Editor, products).</p></div>';
+  return h;
+}
+
+let pendingDraw = false;
+function authView() {
+  const wrap = (inner) => '<div class="card" style="max-width:420px;margin:30px auto">' + inner + '</div>';
+  if (S.auth === 'boot') return '<div class="empty">Loading...</div>';
+  if (S.auth === 'config') return wrap('<h2>Setup needed</h2><p>This page is not connected to a database yet. Open <code>config.js</code> in the repository and enter the Supabase project URL and anon key. The README has the steps.</p>');
+  if (S.auth === 'nostore') return wrap('<h2>Almost there</h2><p>You are signed in as ' + esc(S.profile ? S.profile.email : '') + ', but this login is not linked to a store yet. Ask HQ to link it under Setup, Logins.</p><button class="btn ghost" data-act="signout">Sign out</button>');
+  if (S.auth === 'recover') return wrap('<h2>Choose a new password</h2><form id="recoverForm"><div class="f"><label for="np">New password (at least 8 characters)</label><input id="np" type="password" autocomplete="new-password" minlength="8" required></div><div class="row" style="margin-top:12px"><button class="btn" type="submit">Save password</button></div></form>' + (S.authMsg ? '<p class="small">' + esc(S.authMsg) + '</p>' : ''));
+  return wrap('<h2>Sign in</h2><form id="loginForm"><div class="f"><label for="em">Email</label><input id="em" type="email" autocomplete="username" required value="' + esc(S.authEm) + '"></div><div class="f" style="margin-top:8px"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div><div class="row" style="margin-top:12px"><button class="btn" type="submit">Sign in</button><button class="btn ghost" type="button" data-act="forgot">Forgot password</button></div></form>' + (S.authMsg ? '<p class="small">' + esc(S.authMsg) + '</p>' : ''));
+}
+function draw(force) {
+  if (S.auth !== 'in') { drawHeader(); $('#main').innerHTML = authView(); return; }
+  const a = document.activeElement;
+  if (!force && a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.closest('#main') && a.type !== 'checkbox' && a.type !== 'radio') { pendingDraw = true; return; }
+  pendingDraw = false;
+  S.admin = S.admin || false;
+  if (!tabsFor().some((t) => t[0] === S.tab)) S.tab = 'board';
+  drawHeader();
+  const v = { board: viewBoard, order: viewOrder, mine: viewMine, all: viewAll, forecast: viewForecast, admin: viewAdmin }[S.tab];
+  let html = '';
+  if (S.demo) html += '<div class="banner info">You are looking at demo data. Nothing is saved. <button class="btn ghost sm" data-act="demo">Leave demo</button></div>';
+  if (S.conn === 'error') html += '<div class="banner">The shared data could not be reached. Check your connection and that you have access to this page.</div>';
+  $('#main').innerHTML = html + v();
+}
+
+/* ---------- events ---------- */
+document.addEventListener('focusout', () => { setTimeout(() => { if (pendingDraw) draw(); }, 50); });
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act, code = b.dataset.code;
+  if (act === 'tab') { S.tab = b.dataset.v; draw(true); refresh(); }
+  else if (act === 'topup') { S.cart[code] = (S.cart[code] || 0) + Number(b.dataset.n); saveCart(); draw(true); toast('Added ' + b.dataset.n + ' cases to your order.'); }
+  else if (act === 'rm') { delete S.cart[code]; saveCart(); draw(true); }
+  else if (act === 'clearcart') { S.cart = {}; saveCart(); draw(true); }
+  else if (act === 'submit') submitOrder();
+  else if (act === 'aview') { S.aview = b.dataset.v; draw(true); }
+  else if (act === 'signout') { await sb.auth.signOut(); }
+  else if (act === 'forgot') {
+    const em = ($('#em') || {}).value || ''; S.authEm = em.trim();
+    if (!S.authEm) { S.authMsg = 'Type your email first, then press Forgot password.'; return draw(); }
+    const { error } = await sb.auth.resetPasswordForEmail(S.authEm, { redirectTo: location.origin + location.pathname });
+    S.authMsg = error ? error.message : 'If that email has a login, a reset link is on its way.'; draw();
+  }
+  else if (act === 'cancelline') { await run(sb.rpc('cancel_line', { p_line: Number(b.dataset.lid) }), 'Line cancelled.'); }
+  else if (act === 'upapply') {
+    const r = upLines(); if (!r.lines.length) return;
+    if (S.up.mode === 'replace') S.cart = {};
+    r.lines.forEach((l) => { S.cart[l.pr.code] = (S.up.mode === 'add' ? (S.cart[l.pr.code] || 0) : 0) + l.q; });
+    if (!S.me.storeId) { const m = r.stores.map(matchStore).find(Boolean); if (m) setStore(m.id); }
+    S.up = null; saveCart(); draw(true); toast('Quantities added to your order. Check them, then send.');
+  }
+  else if (act === 'updiscard') { S.up = null; draw(true); }
+  else if (act === 'reorder') {
+    const o = S.orders.find((x) => x.id === b.dataset.oid); if (!o) return;
+    o.lines.forEach((l) => { if (l.status !== 'cancelled') S.cart[l.code] = l.cases; }); S.method = o.method || 'collect'; saveCart(); S.tab = 'order'; draw(true); toast('Order copied. Adjust the quantities and send.');
+  }
+  else if (act === 'savefill') {
+    const v = Math.max(0, Math.min(Number(b.dataset.max), Math.round(Number($('#fl-' + b.dataset.lid).value) || 0)));
+    await run(sb.from('order_lines').update({ filled: v }).eq('id', Number(b.dataset.lid)), 'Filled cases saved.');
+  }
+  else if (act === 'savefee') {
+    const o = S.orders.find((x) => x.id === b.dataset.oid); if (!o) return;
+    const kg = Number($('#kg-' + o.id).value) || 0; let fee = $('#fee-' + o.id).value;
+    fee = fee === '' ? (kg && S.settings.ratePerKg ? Math.round(kg * S.settings.ratePerKg * 100) / 100 : null) : Number(fee);
+    if (fee == null) return toast('Enter the delivery cost.');
+    await run(sb.from('orders').update({ pallet_kg: kg || null, delivery_cost: fee }).eq('id', o.id), 'Delivery cost saved.');
+  }
+  else if (act === 'release') {
+    if (b.dataset.ok === '0') { b.textContent = 'Start before par? Click again'; b.dataset.ok = '2'; return; }
+    const n = await patchLines(code, 'pending', 'production'); if (n) toast('Production started on ' + n + ' order line(s).');
+  }
+  else if (act === 'mark') { const n = await patchLines(code, b.dataset.from, b.dataset.to); if (n) toast('Updated ' + n + ' order line(s).'); }
+  else if (act === 'export') {
+    const rows = ['order,date,store,method,need_by,code,product,cases,case_price,status'], p = prodMap();
+    S.orders.forEach((o) => (o.lines || []).forEach((l) => rows.push([o.id, ymd(o.createdAt), o.storeName, o.method, o.needBy || '', l.code, '"' + (p[l.code] ? p[l.code].name : '').replace(/"/g, '""') + '"', l.cases, l.price, l.status].join(','))));
+    S.exportText = rows.join('\n');
+    try { await navigator.clipboard.writeText(S.exportText); toast('CSV copied.'); } catch (err) { toast('Select the text below and copy it.'); }
+    draw(true);
+  }
+  else if (act === 'demo') { toggleDemo(); }
+  else if (act === 'import') importHistory();
+  else if (act === 'savesettings') {
+    const s = { defaultPar: Math.max(1, Number($('#sdp').value) || 10), vat: Number($('#svat').value) || 0, ratePerKg: Number($('#srk').value) || 0, lastDelivery: $('#sld2').value || '', leadDays: Math.max(1, Number($('#sld').value) || 10), closeFrom: $('#scf').value || '', reopen: $('#sro').value || '' };
+    await run(sb.from('settings').upsert({ id: 1, data: s }), 'Saved.');
+  }
+  else if (act === 'addstores') {
+    const names = $('#ns').value.split('\n').map((x) => x.replace(/^mantelli'?s direct\s*/i, '').trim()).filter(Boolean);
+    if (names.length) await run(sb.from('stores').upsert(names.map((n) => ({ id: slug(n), name: n, region: '' })), { onConflict: 'id' }), 'Stores added.');
+  }
+  else if (act === 'rmstore') { await run(sb.from('stores').update({ active: false }).eq('id', b.dataset.id), 'Store removed from the list.'); }
+  else if (act === 'bulkpar') {
+    const v = Math.round(Number($('#bulk').value)); if (!(v > 0)) return toast('Enter a par first.');
+    const qs = S.adminQ.trim().toLowerCase();
+    const codes = cat().filter((p) => p.kind !== 'supply' && (!qs || (p.code + ' ' + p.name + ' ' + p.category).toLowerCase().includes(qs))).map((p) => p.code);
+    if (codes.length) await run(sb.from('products').update({ par: v }).in('code', codes), 'Pars updated.');
+  }
+});
+document.addEventListener('change', async (e) => {
+  const t = e.target, act = t.dataset && t.dataset.act; if (!act) return;
+  if (act === 'store') { setStore(t.value); draw(true); }
+  else if (act === 'upload') { if (t.files && t.files[0]) await loadSheet(t.files[0]); }
+  else if (act === 'upcol') { S.up.sheets[Number(t.dataset.i)].q = Number(t.value); draw(true); }
+  else if (act === 'upmode') { S.up.mode = t.value; }
+  else if (act === 'fl') { S.f.list = t.value; draw(true); }
+  else if (act === 'fs') { S.f.state = t.value; draw(true); }
+  else if (act === 'fo') { S.f.sort = t.value; draw(true); }
+  else if (act === 'os') { S.of.store = t.value; draw(true); }
+  else if (act === 'ost') { S.of.status = t.value; draw(true); }
+  else if (act === 'method') { S.method = t.value; draw(true); }
+  else if (act === 'needby') { S.needBy = t.value; }
+  else if (act === 'notes') { S.notes = t.value; }
+  else if (act === 'cartq' || act === 'cartq2') {
+    const v = Math.max(0, Math.round(Number(t.value) || 0)); if (v) S.cart[t.dataset.code] = v; else delete S.cart[t.dataset.code]; saveCart(); draw(true);
+  }
+  else if (act === 'par') {
+    const v = Math.round(Number(t.value));
+    await run(sb.from('products').update({ par: v > 0 ? v : null }).eq('code', t.dataset.code), v > 0 ? 'Par saved.' : 'Par cleared. The default applies.');
+  }
+  else if (act === 'profrole') { await run(sb.from('profiles').update({ role: t.value }).eq('id', t.dataset.id), 'Saved.'); }
+  else if (act === 'profstore') { await run(sb.from('profiles').update({ store_id: t.value || null }).eq('id', t.dataset.id), 'Saved.'); }
+});
+document.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (e.target.id === 'loginForm') {
+    S.authEm = $('#em').value.trim(); const pw = $('#pw').value; S.authMsg = 'Signing in...'; draw();
+    const { data, error } = await sb.auth.signInWithPassword({ email: S.authEm, password: pw });
+    if (error) { S.authMsg = /invalid login/i.test(error.message) ? 'Wrong email or password.' : error.message; return draw(); }
+    S.authMsg = ''; await start(data.session);
+  } else if (e.target.id === 'recoverForm') {
+    const { error } = await sb.auth.updateUser({ password: $('#np').value });
+    if (error) { S.authMsg = error.message; return draw(); }
+    const { data } = await sb.auth.getSession(); S.authMsg = ''; await start(data.session);
+  }
+});
+document.addEventListener('input', (e) => {
+  const t = e.target, act = t.dataset && t.dataset.act;
+  if (act === 'fq') { S.f.q = t.value; const pos = t.selectionStart; draw(true); const n = $('#fq'); n.focus(); n.setSelectionRange(pos, pos); }
+  else if (act === 'aq') { S.adminQ = t.value; const pos = t.selectionStart; draw(true); const n = $('#aq'); n.focus(); n.setSelectionRange(pos, pos); }
+});
+
+/* ---------- history import ---------- */
+async function importHistory() {
+  const txt = $('#imp').value.trim(), replace = $('#impReplace').checked; if (!txt) return toast('Paste some rows first.');
+  if (S.demo) return toast('Demo mode: nothing is saved.');
+  const p = prodMap(), rows = [], bad = [], newStores = {};
+  const known = {}; S.settings.stores.forEach((s) => { known[s.id] = 1; });
+  txt.split(/\r?\n/).forEach((line, i) => {
+    const f = line.split(/[,\t;]/).map((x) => x.trim()); if (f.length < 4 || !f[0] || /^date$/i.test(f[0])) return;
+    let d = f[0]; const m = d.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})$/); if (m) d = m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+    const code = f[2].toUpperCase(), cases = Math.round(Number(f[3]));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || isNaN(Date.parse(d))) return bad.push('Line ' + (i + 1) + ': date "' + f[0] + '" is not YYYY-MM-DD');
+    if (!p[code]) return bad.push('Line ' + (i + 1) + ': unknown code ' + f[2]);
+    if (!(cases > 0)) return bad.push('Line ' + (i + 1) + ': cases must be above 0');
+    const nm = f[1].replace(/^mantelli'?s direct\s*/i, ''), sid = slug(nm); if (!sid) return bad.push('Line ' + (i + 1) + ': store name is empty');
+    if (!known[sid]) newStores[sid] = nm;
+    rows.push({ order_date: d, store_id: sid, code, cases });
+  });
+  if (!rows.length) { S.importLog = 'Nothing imported.\n' + bad.slice(0, 10).join('\n'); return draw(true); }
+  try {
+    const ns = Object.keys(newStores).map((id) => ({ id, name: newStores[id], region: '' }));
+    if (ns.length) await q(sb.from('stores').upsert(ns, { onConflict: 'id' }));
+    if (replace) await q(sb.from('history').delete().gt('id', 0));
+    for (let i = 0; i < rows.length; i += 500) await q(sb.from('history').insert(rows.slice(i, i + 500)));
+    S.importLog = 'Imported ' + rows.length + ' lines.' + (ns.length ? ' Added stores: ' + ns.map((s) => s.name).join(', ') + '.' : '') + (bad.length ? '\nSkipped ' + bad.length + ':\n' + bad.slice(0, 10).join('\n') : '');
+    await refresh();
+  } catch (e) { S.importLog = 'Import failed: ' + e.message; }
+  draw(true);
+}
+
+/* ---------- demo data (memory only) ---------- */
+let backup = null;
+function toggleDemo() {
+  if (S.demo) { Object.assign(S, backup); S.demo = false; backup = null; draw(true); return; }
+  backup = { orders: S.orders, hist: S.hist, settings: S.settings, pars: S.pars, me: S.me, cart: S.cart };
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const stores = ['Somerset West', 'Stellenbosch', 'Claremont', 'Durbanville', 'Paarl', 'Hermanus'].map((n) => ({ id: slug(n), name: n, fee: null }));
+  const picks = cat().filter((p) => p.kind !== 'supply').filter((_, i) => i % 4 === 0).slice(0, 24);
+  const hist = [], now = Date.now();
+  for (let w = 60; w >= 1; w--) {
+    const t0 = now - w * WEEK, month = new Date(t0).getUTCMonth();
+    const season = (month >= 9 && month <= 11) ? 1.8 : (month >= 5 && month <= 7 ? 1.2 : 0.9);
+    picks.forEach((p, pi) => {
+      const base = (pi % 5 === 0) ? 6 : (pi % 3 === 0) ? 3 : 1.5, gift = /gift|hamper|funky mini/i.test(p.name + p.category) ? season : 1;
+      stores.forEach((s) => {
+        const n = Math.round(base * gift * (0.4 + rnd()) / 2);
+        if (n > 0 && rnd() < 0.7) hist.push({ t: t0 + Math.floor(rnd() * 5) * DAY, store: s.id, code: p.code, cases: n });
+      });
+    });
+  }
+  const orders = [];
+  stores.forEach((s, si) => {
+    const lines = picks.filter((_, i) => (i + si) % 3 === 0).map((p, i) => ({ code: p.code, cases: 1 + ((i * 3 + si) % 6), price: p.casePrice, status: 'pending' }));
+    orders.push({ id: 'demo' + si, uid: s.id, storeId: s.id, storeName: s.name, createdAt: now - si * DAY, createdBy: 'demo', method: si % 2 ? 'deliver' : 'collect', fee: si % 2 ? 350 : 0, palletKg: si % 2 ? 420 : null, needBy: '', notes: '', lines });
+  });
+  S.demo = true; S.hist = hist; S.orders = orders; S.settings = Object.assign({}, S.settings, { stores }); S.me = { storeId: stores[0].id }; S.cart = {};
+  S.tab = 'forecast'; draw(true);
+}
+
+/* ---------- boot ---------- */
+let polling = false;
+async function start(session) {
+  S.userId = session.user.id; S.demo = false;
+  try { const prof = await q(sb.from('profiles').select('*').eq('id', S.userId)); S.profile = prof[0] || null; }
+  catch (e) { S.authMsg = 'Could not load your profile: ' + e.message; S.auth = 'login'; return draw(); }
+  if (!S.profile || (S.profile.role !== 'hq' && !S.profile.store_id)) { S.auth = 'nostore'; return draw(); }
+  S.admin = S.profile.role === 'hq';
+  S.me.storeId = S.admin ? null : S.profile.store_id;
+  if (S.admin) { try { S.me.storeId = localStorage.getItem('mantellis-store') || null; } catch (e) {} }
+  S.auth = 'in'; S.tab = 'board';
+  try { await loadAll(); S.conn = 'ok'; } catch (e) { S.conn = 'error'; }
+  draw(true);
+  if (!polling) { polling = true; setInterval(() => { if (!document.hidden) refresh(); }, 30000); }
+}
+async function boot() {
+  try { S.cart = JSON.parse(localStorage.getItem('mantellis-cart') || '{}') || {}; } catch (e) { S.cart = {}; }
+  const cfg = window.APP_CONFIG;
+  if (!cfg || !cfg.url || !cfg.anonKey || /YOUR-/.test(cfg.url + cfg.anonKey) || !window.supabase) { S.auth = 'config'; return draw(); }
+  sb = window.supabase.createClient(cfg.url, cfg.anonKey);
+  sb.auth.onAuthStateChange((ev, session) => {
+    if (ev === 'PASSWORD_RECOVERY') { S.auth = 'recover'; draw(); }
+    else if (ev === 'SIGNED_OUT') { S.auth = 'login'; S.admin = false; S.profile = null; S.orders = []; S.userId = null; S.demo = false; draw(); }
+  });
+  const { data } = await sb.auth.getSession();
+  if (S.auth === 'recover') return;
+  if (data && data.session) await start(data.session); else { S.auth = 'login'; draw(); }
+}
+boot();
+</script>
+</body>
+</html>
