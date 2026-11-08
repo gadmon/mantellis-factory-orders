@@ -1,1 +1,1 @@
-window.APP_CONFIG = { url: 'https://aecnivqswyucluwxuiix.supabase.co', anonKey: 'PASTE-ANON-KEY' };
+window.APP_CONFIG = { url: 'https://aecnivqswyucluwxuiix.supabase.co', anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlY25pdnFzd3l1Y2x1d3h1aWl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxNDkwMzEsImV4cCI6MjEwOTcyNTAzMX0.CqH098JLntVf4lxgBW7ptbXPP5TkU2KXmL3yElmCblE' };
