@@ -486,7 +486,7 @@ function orderCard(o, admin) {
       (l.status === 'pending' && mineOrAdmin ? '<button class="btn danger sm" data-act="cancelline" data-lid="' + l.id + '">Cancel line</button>' : '') + '</td></tr>';
   });
   h += '</tbody></table></div>' + (o.notes ? '<p class="small"><b>Notes:</b> ' + esc(o.notes) + '</p>' : '') +
-    (mineOrAdmin ? '<div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="reorder" data-oid="' + esc(o.id) + '">Repeat this order</button></div>' : '') +
+    (mineOrAdmin ? '<div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="reorder" data-oid="' + esc(o.id) + '">Repeat this order</button>' + (admin || (o.lines || []).every((l) => l.status === 'pending' || l.status === 'cancelled') ? '<button class="btn danger sm" data-act="delorder" data-oid="' + esc(o.id) + '">Delete this order</button>' : '') + '</div>' : '') +
     (o.method === 'deliver' ? (o.fee != null ? '<p class="small">Delivery: ' + money(o.fee) + ' excl. VAT' + (o.palletKg ? ' for ' + num(o.palletKg) + ' kg of pallet' : '') + ', set by HQ.</p>' : '<p class="small muted">Delivery cost to be set by HQ once the pallet is weighed.</p>') : '') +
     (admin && o.method === 'deliver' ? '<div class="bar"><div class="f"><label for="kg-' + esc(o.id) + '">Pallet weight (kg)</label><input class="qty" type="number" min="0" id="kg-' + esc(o.id) + '" value="' + (o.palletKg || '') + '"></div><div class="f"><label for="fee-' + esc(o.id) + '">Delivery cost, excl. VAT (R)</label><input class="qty" style="width:110px" type="number" min="0" step="0.01" id="fee-' + esc(o.id) + '" value="' + (o.fee == null ? '' : o.fee) + '" placeholder="' + (S.settings.ratePerKg ? 'kg × rate' : '') + '"></div><button class="btn sm" data-act="savefee" data-oid="' + esc(o.id) + '">Save delivery cost</button></div>' : '') + '</div></details>';
   return h;
@@ -628,6 +628,10 @@ document.addEventListener('click', async (e) => {
     if (!S.authEm) { S.authMsg = 'Type your email first, then press Forgot password.'; return draw(); }
     const { error } = await sb.auth.resetPasswordForEmail(S.authEm, { redirectTo: location.origin + location.pathname });
     S.authMsg = error ? error.message : 'If that email has a login, a reset link is on its way.'; draw();
+  }
+  else if (act === 'delorder') {
+    if (!confirm('Delete this whole order? It will be removed and the outstanding totals will update straight away. This cannot be undone.')) return;
+    await run(sb.rpc('delete_order', { p_order: b.dataset.oid }), 'Order deleted.');
   }
   else if (act === 'cancelline') { await run(sb.rpc('cancel_line', { p_line: Number(b.dataset.lid) }), 'Line cancelled.'); }
   else if (act === 'upapply') {
@@ -797,7 +801,7 @@ async function start(session) {
   S.auth = 'in'; S.tab = 'board';
   try { await loadAll(); S.conn = 'ok'; } catch (e) { S.conn = 'error'; }
   draw(true);
-  if (!polling) { polling = true; setInterval(() => { if (!document.hidden) refresh(); }, 30000); }
+  if (!polling) { polling = true; setInterval(() => { if (!document.hidden) refresh(); }, 15000); }
 }
 async function boot() {
   try { S.cart = JSON.parse(localStorage.getItem('mantellis-cart') || '{}') || {}; } catch (e) { S.cart = {}; }

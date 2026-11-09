@@ -192,6 +192,21 @@ begin
   if not found then raise exception 'That line can no longer be cancelled.'; end if;
 end $$;
 
+-- Remove a whole order entered by mistake. A store can do this only while nothing in it has started production; HQ can always.
+create or replace function public.delete_order(p_order uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare s text;
+begin
+  if auth.uid() is null then raise exception 'Not signed in.'; end if;
+  select store_id into s from public.orders where id = p_order;
+  if not found then raise exception 'That order no longer exists.'; end if;
+  if not (public.is_hq() or s = public.my_store()) then raise exception 'Not allowed.'; end if;
+  if not public.is_hq() and exists (select 1 from public.order_lines where order_id = p_order and status not in ('pending','cancelled')) then
+    raise exception 'The factory has already started part of this order. Ask HQ to remove it.';
+  end if;
+  delete from public.orders where id = p_order;
+end $$;
+
 -- Totals only: cases waiting per product and how many stores are waiting. No store names, no order details.
 create or replace function public.get_board() returns table (code text, cases bigint, stores bigint)
 language plpgsql stable security definer set search_path = public as $$
@@ -205,12 +220,14 @@ end $$;
 
 revoke all on function public.place_order(text, text, date, text, jsonb) from public, anon;
 revoke all on function public.cancel_line(bigint) from public, anon;
+revoke all on function public.delete_order(uuid) from public, anon;
 revoke all on function public.get_board() from public, anon;
 revoke all on function public.is_hq() from public, anon;
 revoke all on function public.my_store() from public, anon;
 revoke all on function public.is_member() from public, anon;
 grant execute on function public.place_order(text, text, date, text, jsonb) to authenticated;
 grant execute on function public.cancel_line(bigint) to authenticated;
+grant execute on function public.delete_order(uuid) to authenticated;
 grant execute on function public.get_board() to authenticated;
 grant execute on function public.is_hq() to authenticated;
 grant execute on function public.my_store() to authenticated;
