@@ -118,6 +118,7 @@ const S = {
   orders: [], board: {}, hist: [], profiles: [], profile: null, auth: 'boot', authMsg: '', authEm: '', cart: {}, tab: 'board',
   f: { q: '', list: 'all', state: 'all', sort: 'close' },
   of: { store: 'all', status: 'open' }, aview: 'product',
+  inv: { store: 'somerset-west', no: '', date: '', lines: null, bad: [], file: '', text: '' }, invoices: [], invMsg: '',
   me: { storeId: null }, admin: false, userId: null,
   demo: false, conn: 'connecting', method: 'collect', needBy: '', notes: '', fcMsg: '', importLog: '', exportText: '',
   adminQ: '', up: null
@@ -186,6 +187,7 @@ async function loadAll() {
   if (S.admin) {
     S.hist = (await pageAll(() => sb.from('history').select('order_date,store_id,code,cases').order('id'))).map((r) => ({ t: Date.parse(r.order_date + 'T12:00:00Z'), store: r.store_id, code: r.code, cases: r.cases }));
     S.profiles = await q(sb.from('profiles').select('*').order('email'));
+    try { S.invoices = await q(sb.from('invoices').select('id,invoice_no,store_id,inv_date,created_at,lines,result,reversed_at').order('created_at', { ascending: false })); } catch (e) { S.invoices = []; }
   } else {
     const b = await q(sb.rpc('get_board')); S.board = {}; b.forEach((r) => { S.board[r.code] = { cases: Number(r.cases), stores: Number(r.stores) }; });
   }
@@ -491,17 +493,123 @@ function orderCard(o, admin) {
     (admin && o.method === 'deliver' ? '<div class="bar"><div class="f"><label for="kg-' + esc(o.id) + '">Pallet weight (kg)</label><input class="qty" type="number" min="0" id="kg-' + esc(o.id) + '" value="' + (o.palletKg || '') + '"></div><div class="f"><label for="fee-' + esc(o.id) + '">Delivery cost, excl. VAT (R)</label><input class="qty" style="width:110px" type="number" min="0" step="0.01" id="fee-' + esc(o.id) + '" value="' + (o.fee == null ? '' : o.fee) + '" placeholder="' + (S.settings.ratePerKg ? 'kg × rate' : '') + '"></div><button class="btn sm" data-act="savefee" data-oid="' + esc(o.id) + '">Save delivery cost</button></div>' : '') + '</div></details>';
   return h;
 }
+
+/* ---------- factory invoices ---------- */
+function normDate(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number' && v > 20000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
+  const s = String(v).trim(); let m;
+  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return m[1] + '-' + m[2] + '-' + m[3];
+  if ((m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/))) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return y + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0'); }
+  return '';
+}
+function parseInvoiceRows(rows) {
+  const h = rows.findIndex((r) => r.some((c) => /^\s*code\s*$/i.test(String(c)))); if (h < 0) return null;
+  const hdr = rows[h].map((c) => String(c).trim());
+  const ci = hdr.findIndex((c) => /^code$/i.test(c));
+  let qi = hdr.findIndex((c) => /^(cases?|qty|quantity)$/i.test(c));
+  if (qi < 0) qi = hdr.findIndex((c) => /cases?|qty|quant/i.test(c) && !/price|per/i.test(c));
+  if (qi < 0) return null;
+  const ii = hdr.findIndex((c) => /^(invoice|document)( ?no| number)?$/i.test(c)), di = hdr.findIndex((c) => /^date$/i.test(c)), si = hdr.findIndex((c) => /^store/i.test(c));
+  const out = { lines: [], bad: [], inv: '', date: '', store: '' };
+  rows.slice(h + 1).forEach((r) => {
+    const code = String(r[ci] == null ? '' : r[ci]).trim().toUpperCase(); if (!code) return;
+    const q = Number(String(r[qi] == null ? '' : r[qi]).replace(/[^0-9.\-]/g, ''));
+    if (!(q > 0)) return;
+    if (q % 1 !== 0) { out.bad.push(code + ' (' + q + ')'); return; }
+    out.lines.push({ code, cases: q });
+    if (ii >= 0 && !out.inv) out.inv = String(r[ii] || '').trim();
+    if (di >= 0 && !out.date) out.date = normDate(r[di]);
+    if (si >= 0 && !out.store) out.store = String(r[si] || '').trim();
+  });
+  return out;
+}
+function applyParsedInvoice(res, fileName) {
+  if (!res || !res.lines.length) { toast('No invoice lines found. The file needs a header row with "Code" and a cases or quantity column.'); return; }
+  S.inv.lines = res.lines; S.inv.bad = res.bad || []; S.inv.file = fileName || 'pasted lines'; S.invMsg = '';
+  if (res.inv && !S.inv.no) S.inv.no = res.inv;
+  if (res.date && !S.inv.date) S.inv.date = res.date;
+  const st = res.store && matchStore(res.store); if (st) S.inv.store = st.id;
+}
+async function loadInvoiceFile(file) {
+  if (!window.XLSX) return toast('The spreadsheet reader did not load. Check your connection and try again.');
+  if (file.size > 5e6) return toast('That file is over 5 MB.');
+  try {
+    const wb = XLSX.read(await readBuf(file), { type: 'array' });
+    let res = null; for (const n of wb.SheetNames) { res = parseInvoiceRows(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' })); if (res && res.lines.length) break; }
+    applyParsedInvoice(res, file.name);
+  } catch (e) { toast('Could not read that file. Use an Excel (.xls, .xlsx) or CSV file.'); }
+  draw(true);
+}
+function readPastedInvoice(text) {
+  const lines = [], bad = [];
+  String(text || '').split(/\r?\n/).forEach((ln) => {
+    const tk = ln.trim().split(/[\s,;\t]+/).filter(Boolean); if (tk.length < 2 || /^code$/i.test(tk[0])) return;
+    const q = Number(tk[1].replace(/[^0-9.\-]/g, '')); if (!(q > 0)) return;
+    if (q % 1 !== 0) { bad.push(tk[0].toUpperCase() + ' (' + q + ')'); return; }
+    lines.push({ code: tk[0].toUpperCase(), cases: q });
+  });
+  return { lines, bad, inv: '', date: '', store: '' };
+}
+function invPreview() {
+  const up = {}; cat().forEach((p) => { up[p.code.toUpperCase()] = p; });
+  const agg = {}; (S.inv.lines || []).forEach((l) => { agg[l.code] = (agg[l.code] || 0) + l.cases; });
+  const open = {};
+  S.orders.filter((o) => o.storeId === S.inv.store).forEach((o) => (o.lines || []).forEach((l) => { if (['pending', 'production', 'ready'].includes(l.status)) { const c = l.code.toUpperCase(); open[c] = (open[c] || 0) + l.cases; } }));
+  return Object.keys(agg).sort().map((c) => { const q = agg[c], o = open[c] || 0, clr = Math.min(q, o); return { code: c, name: up[c] ? up[c].name : '(not in the catalogue)', known: !!up[c], q, o, clr, extra: q - clr, left: o - clr }; });
+}
+function invPanel() {
+  if (!S.admin) return '';
+  const I = S.inv, stores = S.settings.stores.slice().sort((a, b) => a.name.localeCompare(b.name));
+  let h = '<details class="card" ' + (I.lines || S.invMsg ? 'open' : '') + '><summary style="cursor:pointer"><b>Record a factory invoice</b> <span class="muted small">what was delivered, to clear it from outstanding</span></summary>';
+  if (S.invMsg) h += '<div class="banner info" style="margin-top:8px">' + esc(S.invMsg) + '</div>';
+  h += '<div class="bar" style="margin-top:8px"><div class="f"><label for="invstore">Store</label><select id="invstore" data-act="invstore">' + stores.map((s) => '<option value="' + esc(s.id) + '"' + (I.store === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></div>' +
+    '<div class="f"><label for="invno">Invoice number</label><input id="invno" data-act="invno" type="text" value="' + esc(I.no) + '" placeholder="e.g. IN737758" style="width:140px"></div>' +
+    '<div class="f"><label for="invdate">Invoice date</label><input id="invdate" data-act="invdate" type="date" value="' + esc(I.date) + '"></div></div>' +
+    '<div class="row" style="margin:8px 0"><div><label for="invfile">Invoice file (Excel or CSV with Code and Cases columns)</label><br><input type="file" id="invfile" data-act="invfile" accept=".xls,.xlsx,.xlsm,.csv"></div></div>' +
+    '<div><label for="invtext">Or paste the lines (one per line: code, then cases)</label><br><textarea id="invtext" data-act="invtext" rows="4" style="width:100%" placeholder="M810 5&#10;M720 1&#10;M940 60">' + esc(I.text) + '</textarea><div class="row" style="margin-top:4px"><button class="btn ghost sm" data-act="invpaste">Read pasted lines</button></div></div>' +
+    '<p class="small muted">Photos and PDFs cannot be read on this page. Send the invoice to Claude to be turned into a CSV, or type the lines above.</p>';
+  if (I.lines) {
+    const rows = invPreview(), tot = rows.reduce((a, r) => ({ q: a.q + r.q, clr: a.clr + r.clr, ex: a.ex + r.extra }), { q: 0, clr: 0, ex: 0 });
+    h += '<h3 style="margin-top:10px">Check before applying (' + esc(I.file) + ')</h3>' +
+      '<p class="small">' + num(tot.q) + ' cases on the invoice. <b>' + num(tot.clr) + '</b> will be cleared from ' + esc(storeName(I.store)) + '\'s outstanding orders' + (tot.ex ? ', and <b>' + num(tot.ex) + '</b> are not on any open order for this store (recorded on the invoice, nothing else changes)' : '') + '.</p>' +
+      (I.bad.length ? '<div class="banner">These lines are not whole cases and were left out: ' + esc(I.bad.join(', ')) + '. Fix the file and read it again.</div>' : '') +
+      '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">On invoice</th><th class="num">Outstanding now</th><th class="num">Cleared</th><th class="num">Not ordered</th><th class="num">Still outstanding after</th></tr></thead><tbody>' +
+      rows.map((r) => '<tr><td><div class="nm">' + esc(r.name) + '</div><div class="meta">' + esc(r.code) + '</div></td><td class="num">' + r.q + '</td><td class="num">' + r.o + '</td><td class="num">' + r.clr + '</td><td class="num">' + (r.extra ? '<b>' + r.extra + '</b>' : '0') + '</td><td class="num">' + r.left + '</td></tr>').join('') +
+      '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn" data-act="invapply"' + (I.bad.length ? ' disabled' : '') + '>Apply to orders</button><button class="btn ghost" data-act="invdiscard">Discard</button></div>';
+  }
+  const past = S.invoices || [];
+  if (past.length) {
+    h += '<h3 style="margin-top:14px">Recorded invoices</h3><div class="scroll"><table><thead><tr><th>Invoice</th><th>Store</th><th>Date</th><th class="num">Cases</th><th class="num">Cleared</th><th></th></tr></thead><tbody>' +
+      past.map((v) => { const cs = (v.lines || []).reduce((a, l) => a + (Number(l.cases) || 0), 0); return '<tr><td>' + esc(v.invoice_no) + '</td><td>' + esc(storeName(v.store_id)) + '</td><td>' + esc(v.inv_date || ymd(Date.parse(v.created_at))) + '</td><td class="num">' + cs + '</td><td class="num">' + ((v.result && v.result.matched) || 0) + '</td><td>' + (v.reversed_at ? '<span class="muted small">Undone</span>' : '<button class="btn danger sm" data-act="invundo" data-id="' + esc(v.id) + '">Undo</button>') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+  }
+  return h + '</details>';
+}
+function outstandingTable(storeId) {
+  const p = prodMap(), m = {};
+  S.orders.filter((o) => o.storeId === storeId).forEach((o) => (o.lines || []).forEach((l) => {
+    if (l.status === 'cancelled') return;
+    const r = m[l.code] = m[l.code] || { ordered: 0, delivered: 0, wait: 0, prod: 0, ready: 0 };
+    r.ordered += l.cases; if (l.status === 'done') r.delivered += l.cases; else if (l.status === 'ready') r.ready += l.cases; else if (l.status === 'production') r.prod += l.cases; else r.wait += l.cases;
+  }));
+  const rows = Object.keys(m).map((c) => ({ c, r: m[c], out: m[c].wait + m[c].prod + m[c].ready })).filter((x) => x.out > 0).sort((a, b) => b.out - a.out);
+  if (!rows.length) return '<div class="card"><h3>Still outstanding</h3><p class="muted">Nothing is outstanding. Everything ordered has been delivered.</p></div>';
+  const T = rows.reduce((a, x) => ({ out: a.out + x.out, del: a.del + x.r.delivered, ord: a.ord + x.r.ordered }), { out: 0, del: 0, ord: 0 });
+  return '<div class="card"><h3>Still outstanding for ' + esc(storeName(storeId)) + '</h3><p class="small muted">' + num(T.out) + ' cases still to come. ' + num(T.del) + ' of the cases on these products have already been delivered.</p><div class="scroll"><table><thead><tr><th>Product</th><th class="num">Ordered</th><th class="num">Delivered</th><th class="num">Outstanding</th><th class="num">Waiting</th><th class="num">In production</th><th class="num">Ready</th></tr></thead><tbody>' +
+    rows.map((x) => '<tr><td><div class="nm">' + esc(p[x.c] ? p[x.c].name : x.c) + '</div><div class="meta">' + esc(x.c) + '</div></td><td class="num">' + x.r.ordered + '</td><td class="num">' + x.r.delivered + '</td><td class="num"><b>' + x.out + '</b></td><td class="num">' + x.r.wait + '</td><td class="num">' + x.r.prod + '</td><td class="num">' + x.r.ready + '</td></tr>').join('') + '</tbody></table></div></div>';
+}
 function viewMine() {
-  derive();
   if (!S.me.storeId) return '<div class="banner">Choose your store at the top to see its orders.</div>';
   const list = S.orders.filter((o) => o.storeId === S.me.storeId).sort((a, b) => b.createdAt - a.createdAt);
-  return '<h2 style="margin-bottom:10px">Orders for ' + esc(storeName(S.me.storeId)) + '</h2>' + (list.length ? list.map((o) => orderCard(o, S.admin)).join('') : '<div class="empty">No orders yet.</div>');
+  const open = list.filter((o) => !['done', 'cancelled'].includes(orderStatus(o))), closed = list.filter((o) => ['done', 'cancelled'].includes(orderStatus(o)));
+  return outstandingTable(S.me.storeId) + '<h2 style="margin:10px 0">Open orders for ' + esc(storeName(S.me.storeId)) + '</h2>' +
+    (open.length ? open.map((o) => orderCard(o, S.admin)).join('') : '<div class="empty">' + (list.length ? 'No open orders. Everything has been delivered.' : 'No orders yet.') + '</div>') +
+    (closed.length ? '<details style="margin-top:12px"><summary class="muted" style="cursor:pointer">Delivered and cancelled orders (' + closed.length + ')</summary>' + closed.map((o) => orderCard(o, S.admin)).join('') + '</details>' : '');
 }
-
 function viewAll() {
   derive();
   const p = prodMap();
-  let h = windowBanner() + '<div class="row" style="margin-bottom:12px"><button class="btn ' + (S.aview === 'product' ? '' : 'ghost') + '" data-act="aview" data-v="product">By product (factory view)</button><button class="btn ' + (S.aview === 'order' ? '' : 'ghost') + '" data-act="aview" data-v="order">By order</button><button class="btn ghost" data-act="export">Copy order lines as CSV</button></div>';
+  let h = windowBanner() + invPanel() + '<div class="row" style="margin-bottom:12px"><button class="btn ' + (S.aview === 'product' ? '' : 'ghost') + '" data-act="aview" data-v="product">By product (factory view)</button><button class="btn ' + (S.aview === 'order' ? '' : 'ghost') + '" data-act="aview" data-v="order">By order</button><button class="btn ghost" data-act="export">Copy order lines as CSV</button></div>';
   if (S.exportText) h += '<div class="card"><h3>Order lines (CSV)</h3><textarea rows="6" readonly id="exp">' + esc(S.exportText) + '</textarea></div>';
   if (S.aview === 'product') {
     const codes = {};
@@ -633,6 +741,24 @@ document.addEventListener('click', async (e) => {
     if (!confirm('Delete this whole order? It will be removed and the outstanding totals will update straight away. This cannot be undone.')) return;
     await run(sb.rpc('delete_order', { p_order: b.dataset.oid }), 'Order deleted.');
   }
+  else if (act === 'invpaste') { const ta = $('#invtext'); S.inv.text = ta ? ta.value : S.inv.text; applyParsedInvoice(readPastedInvoice(S.inv.text), 'pasted lines'); draw(true); }
+  else if (act === 'invdiscard') { S.inv = Object.assign(S.inv, { lines: null, bad: [], file: '', text: '', no: '', date: '' }); draw(true); }
+  else if (act === 'invapply') {
+    if (!S.inv.no.trim()) return toast('Enter the invoice number first.');
+    if (!S.inv.lines || !S.inv.lines.length) return;
+    const pv = invPreview(), clr = pv.reduce((a, r) => a + r.clr, 0), ex = pv.reduce((a, r) => a + r.extra, 0);
+    if (!confirm('Record invoice ' + S.inv.no.trim() + ' for ' + storeName(S.inv.store) + '?\n\n' + clr + ' cases will be cleared from outstanding orders' + (ex ? '; ' + ex + ' cases are not on any open order.' : '.') + '\nYou can undo it afterwards.')) return;
+    const r = await run(sb.rpc('apply_invoice', { p_invoice: S.inv.no.trim(), p_store: S.inv.store, p_date: S.inv.date || null, p_lines: S.inv.lines }));
+    if (r && r.data) {
+      const d = r.data, extra = (d.extra || []).map((x) => x.code + ' x' + x.cases).join(', ');
+      S.invMsg = 'Recorded ' + S.inv.no.trim() + ': ' + d.matched + ' cases cleared from ' + storeName(S.inv.store) + '\'s outstanding orders.' + (extra ? ' Not on any open order: ' + extra + '.' : '');
+      S.inv = Object.assign(S.inv, { lines: null, bad: [], file: '', text: '', no: '', date: '' }); draw(true);
+    }
+  }
+  else if (act === 'invundo') {
+    if (!confirm('Undo this invoice? Every order line it changed goes back to how it was.')) return;
+    await run(sb.rpc('undo_invoice', { p_invoice: b.dataset.id }), 'Invoice undone.');
+  }
   else if (act === 'cancelline') { await run(sb.rpc('cancel_line', { p_line: Number(b.dataset.lid) }), 'Line cancelled.'); }
   else if (act === 'upapply') {
     const r = upLines(); if (!r.lines.length) return;
@@ -691,6 +817,11 @@ document.addEventListener('change', async (e) => {
   const t = e.target, act = t.dataset && t.dataset.act; if (!act) return;
   if (act === 'store') { setStore(t.value); draw(true); }
   else if (act === 'upload') { if (t.files && t.files[0]) await loadSheet(t.files[0]); }
+  else if (act === 'invstore') { S.inv.store = t.value; draw(true); }
+  else if (act === 'invno') { S.inv.no = t.value; }
+  else if (act === 'invdate') { S.inv.date = t.value; }
+  else if (act === 'invtext') { S.inv.text = t.value; }
+  else if (act === 'invfile') { if (t.files && t.files[0]) await loadInvoiceFile(t.files[0]); }
   else if (act === 'upcol') { S.up.sheets[Number(t.dataset.i)].q = Number(t.value); draw(true); }
   else if (act === 'upmode') { S.up.mode = t.value; }
   else if (act === 'fl') { S.f.list = t.value; draw(true); }

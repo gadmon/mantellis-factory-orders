@@ -207,6 +207,107 @@ begin
   delete from public.orders where id = p_order;
 end $$;
 
+-- ---------- factory invoices: record what was delivered and clear it from outstanding ----------
+create table if not exists public.invoices (
+  id uuid primary key default gen_random_uuid(),
+  invoice_no text not null,
+  store_id text not null references public.stores(id),
+  inv_date date,
+  uploaded_by uuid default auth.uid(),
+  created_at timestamptz not null default now(),
+  lines jsonb not null,
+  result jsonb not null default '{}'::jsonb,
+  changes jsonb not null default '[]'::jsonb,
+  reversed_at timestamptz
+);
+create unique index if not exists invoices_live_no on public.invoices (invoice_no) where reversed_at is null;
+alter table public.invoices enable row level security;
+drop policy if exists invoices_hq on public.invoices;
+drop policy if exists invoices_read on public.invoices;
+create policy invoices_hq   on public.invoices for all    to authenticated using (public.is_hq()) with check (public.is_hq());
+create policy invoices_read on public.invoices for select to authenticated using (store_id = public.my_store());
+
+-- HQ only. p_lines = [{"code":"M810","cases":5}, ...]. Delivered cases clear that store's oldest outstanding lines
+-- (ready first, then in production, then waiting). Anything left over is reported, never guessed.
+create or replace function public.apply_invoice(p_invoice text, p_store text, p_date date, p_lines jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  r record; l record; remaining int; t int; changes jsonb := '[]'::jsonb; extra jsonb := '[]'::jsonb;
+  matched int := 0; newid bigint; inv uuid; unknown jsonb := '[]'::jsonb;
+begin
+  if auth.uid() is null or not public.is_hq() then raise exception 'Only HQ can record invoices.'; end if;
+  if coalesce(trim(p_invoice), '') = '' then raise exception 'Enter the invoice number.'; end if;
+  if not exists (select 1 from public.stores where id = p_store) then raise exception 'Choose a store.'; end if;
+  if exists (select 1 from public.invoices where invoice_no = trim(p_invoice) and reversed_at is null) then
+    raise exception 'Invoice % has already been recorded. Undo it first if it was wrong.', trim(p_invoice);
+  end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then raise exception 'The invoice has no lines.'; end if;
+
+  for r in
+    select upper(trim(x->>'code')) as code, sum((x->>'cases')::numeric)::int as cases
+      from jsonb_array_elements(p_lines) x
+     where coalesce(trim(x->>'code'), '') <> '' and (x->>'cases')::numeric > 0
+     group by 1 order by 1
+  loop
+    if not exists (select 1 from public.products where upper(code) = r.code) then
+      unknown := unknown || jsonb_build_object('code', r.code, 'cases', r.cases);
+    end if;
+    remaining := r.cases;
+    for l in
+      select ol.id, ol.cases, ol.status, ol.filled, ol.price, ol.order_id, ol.released_at
+        from public.order_lines ol join public.orders o on o.id = ol.order_id
+       where o.store_id = p_store and upper(ol.code) = r.code and ol.status in ('ready','production','pending')
+       order by case ol.status when 'ready' then 0 when 'production' then 1 else 2 end, o.created_at, ol.id
+       for update of ol
+    loop
+      exit when remaining <= 0;
+      t := least(l.cases, remaining);
+      if t = l.cases then
+        update public.order_lines set status = 'done', filled = cases where id = l.id;
+        changes := changes || jsonb_build_object('op','u','id',l.id,'status',l.status,'cases',l.cases,'filled',l.filled,'new_status','done','new_cases',l.cases);
+      else
+        update public.order_lines set cases = l.cases - t, filled = least(l.filled, l.cases - t) where id = l.id;
+        insert into public.order_lines (order_id, code, cases, price, status, filled, released_at)
+          values (l.order_id, (select code from public.order_lines where id = l.id), t, l.price, 'done', t, l.released_at) returning id into newid;
+        changes := changes || jsonb_build_object('op','u','id',l.id,'status',l.status,'cases',l.cases,'filled',l.filled,'new_status',l.status,'new_cases',l.cases - t)
+                           || jsonb_build_object('op','i','id',newid);
+      end if;
+      remaining := remaining - t; matched := matched + t;
+    end loop;
+    if remaining > 0 then extra := extra || jsonb_build_object('code', r.code, 'cases', remaining); end if;
+  end loop;
+
+  insert into public.invoices (invoice_no, store_id, inv_date, lines, result, changes)
+    values (trim(p_invoice), p_store, p_date, p_lines,
+            jsonb_build_object('matched', matched, 'extra', extra, 'unknown', unknown), changes)
+    returning id into inv;
+  return jsonb_build_object('id', inv, 'matched', matched, 'extra', extra, 'unknown', unknown);
+end $$;
+
+-- HQ only. Puts every order line back exactly as it was before the invoice was applied.
+create or replace function public.undo_invoice(p_invoice uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare inv record; c jsonb; i int;
+begin
+  if auth.uid() is null or not public.is_hq() then raise exception 'Only HQ can undo invoices.'; end if;
+  select * into inv from public.invoices where id = p_invoice for update;
+  if not found then raise exception 'Invoice not found.'; end if;
+  if inv.reversed_at is not null then raise exception 'That invoice was already undone.'; end if;
+  for i in reverse (jsonb_array_length(inv.changes) - 1) .. 0 loop
+    c := inv.changes -> i;
+    if c->>'op' = 'u' and not exists (select 1 from public.order_lines where id = (c->>'id')::bigint and status = c->>'new_status' and cases = (c->>'new_cases')::int) then
+      raise exception 'Some orders have changed since this invoice was recorded, so it cannot be undone automatically.';
+    end if;
+  end loop;
+  for i in reverse (jsonb_array_length(inv.changes) - 1) .. 0 loop
+    c := inv.changes -> i;
+    if c->>'op' = 'i' then delete from public.order_lines where id = (c->>'id')::bigint;
+    else update public.order_lines set status = c->>'status', cases = (c->>'cases')::int, filled = (c->>'filled')::int where id = (c->>'id')::bigint;
+    end if;
+  end loop;
+  update public.invoices set reversed_at = now() where id = p_invoice;
+end $$;
+
 -- Totals only: cases waiting per product and how many stores are waiting. No store names, no order details.
 create or replace function public.get_board() returns table (code text, cases bigint, stores bigint)
 language plpgsql stable security definer set search_path = public as $$
@@ -220,6 +321,8 @@ end $$;
 
 revoke all on function public.place_order(text, text, date, text, jsonb) from public, anon;
 revoke all on function public.cancel_line(bigint) from public, anon;
+revoke all on function public.undo_invoice(uuid) from public, anon;
+revoke all on function public.apply_invoice(text, text, date, jsonb) from public, anon;
 revoke all on function public.delete_order(uuid) from public, anon;
 revoke all on function public.get_board() from public, anon;
 revoke all on function public.is_hq() from public, anon;
@@ -227,6 +330,8 @@ revoke all on function public.my_store() from public, anon;
 revoke all on function public.is_member() from public, anon;
 grant execute on function public.place_order(text, text, date, text, jsonb) to authenticated;
 grant execute on function public.cancel_line(bigint) to authenticated;
+grant execute on function public.undo_invoice(uuid) to authenticated;
+grant execute on function public.apply_invoice(text, text, date, jsonb) to authenticated;
 grant execute on function public.delete_order(uuid) to authenticated;
 grant execute on function public.get_board() to authenticated;
 grant execute on function public.is_hq() to authenticated;
