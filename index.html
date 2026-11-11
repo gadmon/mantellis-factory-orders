@@ -118,7 +118,7 @@ const S = {
   orders: [], board: {}, hist: [], profiles: [], profile: null, auth: 'boot', authMsg: '', authEm: '', cart: {}, tab: 'board',
   f: { q: '', list: 'all', state: 'all', sort: 'close' },
   of: { store: 'all', status: 'open' }, aview: 'product',
-  inv: { store: 'somerset-west', no: '', date: '', lines: null, bad: [], file: '', text: '' }, invoices: [], invMsg: '',
+  inv: { kind: 'invoice', store: 'somerset-west', no: '', date: '', lines: null, bad: [], file: '', text: '' }, invoices: [], invMsg: '',
   me: { storeId: null }, admin: false, userId: null,
   demo: false, conn: 'connecting', method: 'collect', needBy: '', notes: '', fcMsg: '', importLog: '', exportText: '',
   adminQ: '', up: null
@@ -134,9 +134,10 @@ const addBD = (ms, n) => { let d = ms, c = 0; while (c < n) { d += DAY; const w 
 const fdate = (ms) => new Date(ms).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const subBD = (ms, n) => { let d = ms, c = 0; while (c < n) { d -= DAY; const w = new Date(d).getUTCDay(); if (w !== 0 && w !== 6) c++; } return d; };
 const afterLastDelivery = (ms) => !!(S.settings.lastDelivery && ymd(ms) > S.settings.lastDelivery);
-const isClosed = (ms) => { const s = S.settings, k = ymd(ms == null ? Date.now() : ms); return !!(s.closeFrom && s.reopen && k >= s.closeFrom && k < s.reopen); };
+const isClosed = (ms) => { const s = S.settings; if (s.recordOnly) return false; const k = ymd(ms == null ? Date.now() : ms); return !!(s.closeFrom && s.reopen && k >= s.closeFrom && k < s.reopen); };
 function windowBanner() {
-  const s = S.settings; if (!s.closeFrom || !s.reopen) return '';
+  const s = S.settings; if (s.recordOnly) return '<div class="banner info">Record-only mode is on: orders can be entered at any time, to record what has already been sent to the factory.</div>';
+  if (!s.closeFrom || !s.reopen) return '';
   const now = Date.now(), cf = Date.parse(s.closeFrom + 'T00:00:00Z'), ro = Date.parse(s.reopen + 'T00:00:00Z'), ld = s.lastDelivery ? Date.parse(s.lastDelivery + 'T00:00:00Z') : 0;
   const dl = ld ? ' Stock that is ready is collected or delivered until ' + fdate(ld) + '. A product must start production by ' + fdate(subBD(ld, s.leadDays)) + ' to be ready by then; anything later is held until January.' : '';
   if (isClosed()) return '<div class="banner">The factory is closed to new orders until ' + fdate(ro) + '.' + dl + '</div>';
@@ -165,7 +166,7 @@ const isPlaceholderPar = (p) => p.kind !== 'supply' && !(S.pars[p.code] > 0);
 const storeName = (id) => { const s = S.settings.stores.find((x) => x.id === id); return s ? s.name : id; };
 const feeFor = (id) => { const s = S.settings.stores.find((x) => x.id === id); return s && s.fee != null && s.fee !== '' ? Number(s.fee) : Number(S.settings.deliveryFee) || 0; };
 
-const DEFAULTS = { defaultPar: 10, vat: 15, leadDays: 10, closeFrom: '', reopen: '', lastDelivery: '', ratePerKg: 0 };
+const DEFAULTS = { defaultPar: 10, vat: 15, leadDays: 10, closeFrom: '', reopen: '', lastDelivery: '', ratePerKg: 0, recordOnly: false };
 function mapOrders(rows) {
   return rows.map((o) => ({
     id: o.id, uid: o.store_id, storeId: o.store_id, storeName: storeName(o.store_id), createdAt: Date.parse(o.created_at), createdBy: o.created_by,
@@ -187,7 +188,7 @@ async function loadAll() {
   if (S.admin) {
     S.hist = (await pageAll(() => sb.from('history').select('order_date,store_id,code,cases').order('id'))).map((r) => ({ t: Date.parse(r.order_date + 'T12:00:00Z'), store: r.store_id, code: r.code, cases: r.cases }));
     S.profiles = await q(sb.from('profiles').select('*').order('email'));
-    try { S.invoices = await q(sb.from('invoices').select('id,invoice_no,store_id,inv_date,created_at,lines,result,reversed_at').order('created_at', { ascending: false })); } catch (e) { S.invoices = []; }
+    try { S.invoices = await q(sb.from('invoices').select('id,invoice_no,kind,store_id,inv_date,created_at,lines,result,reversed_at').order('created_at', { ascending: false })); } catch (e) { S.invoices = []; }
   } else {
     const b = await q(sb.rpc('get_board')); S.board = {}; b.forEach((r) => { S.board[r.code] = { cases: Number(r.cases), stores: Number(r.stores) }; });
   }
@@ -561,10 +562,11 @@ function invPreview() {
 function invPanel() {
   if (!S.admin) return '';
   const I = S.inv, stores = S.settings.stores.slice().sort((a, b) => a.name.localeCompare(b.name));
-  let h = '<details class="card" ' + (I.lines || S.invMsg ? 'open' : '') + '><summary style="cursor:pointer"><b>Record a factory invoice</b> <span class="muted small">what was delivered, to clear it from outstanding</span></summary>';
+  let h = '<details class="card" ' + (I.lines || S.invMsg ? 'open' : '') + '><summary style="cursor:pointer"><b>Record a factory invoice or credit note</b> <span class="muted small">an invoice clears what was delivered; a credit note cancels what will not be supplied</span></summary>';
   if (S.invMsg) h += '<div class="banner info" style="margin-top:8px">' + esc(S.invMsg) + '</div>';
   h += '<div class="bar" style="margin-top:8px"><div class="f"><label for="invstore">Store</label><select id="invstore" data-act="invstore">' + stores.map((s) => '<option value="' + esc(s.id) + '"' + (I.store === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></div>' +
-    '<div class="f"><label for="invno">Invoice number</label><input id="invno" data-act="invno" type="text" value="' + esc(I.no) + '" placeholder="e.g. IN737758" style="width:140px"></div>' +
+    '<div class="f"><label for="invkind">Type</label><select id="invkind" data-act="invkind"><option value="invoice"' + (I.kind === 'invoice' ? ' selected' : '') + '>Tax invoice (delivered)</option><option value="credit"' + (I.kind === 'credit' ? ' selected' : '') + '>Credit note (factory will not supply)</option></select></div>' +
+    '<div class="f"><label for="invno">Document number</label><input id="invno" data-act="invno" type="text" value="' + esc(I.no) + '" placeholder="e.g. IN737758" style="width:140px"></div>' +
     '<div class="f"><label for="invdate">Invoice date</label><input id="invdate" data-act="invdate" type="date" value="' + esc(I.date) + '"></div></div>' +
     '<div class="row" style="margin:8px 0"><div><label for="invfile">Invoice file (Excel or CSV with Code and Cases columns)</label><br><input type="file" id="invfile" data-act="invfile" accept=".xls,.xlsx,.xlsm,.csv"></div></div>' +
     '<div><label for="invtext">Or paste the lines (one per line: code, then cases)</label><br><textarea id="invtext" data-act="invtext" rows="4" style="width:100%" placeholder="M810 5&#10;M720 1&#10;M940 60">' + esc(I.text) + '</textarea><div class="row" style="margin-top:4px"><button class="btn ghost sm" data-act="invpaste">Read pasted lines</button></div></div>' +
@@ -572,16 +574,16 @@ function invPanel() {
   if (I.lines) {
     const rows = invPreview(), tot = rows.reduce((a, r) => ({ q: a.q + r.q, clr: a.clr + r.clr, ex: a.ex + r.extra }), { q: 0, clr: 0, ex: 0 });
     h += '<h3 style="margin-top:10px">Check before applying (' + esc(I.file) + ')</h3>' +
-      '<p class="small">' + num(tot.q) + ' cases on the invoice. <b>' + num(tot.clr) + '</b> will be cleared from ' + esc(storeName(I.store)) + '\'s outstanding orders' + (tot.ex ? ', and <b>' + num(tot.ex) + '</b> are not on any open order for this store (recorded on the invoice, nothing else changes)' : '') + '.</p>' +
+      '<p class="small">' + num(tot.q) + ' cases on the ' + (I.kind === 'credit' ? 'credit note' : 'invoice') + '. <b>' + num(tot.clr) + '</b> will be ' + (I.kind === 'credit' ? 'cancelled' : 'cleared') + ' from ' + esc(storeName(I.store)) + '\'s outstanding orders' + (tot.ex ? ', and <b>' + num(tot.ex) + '</b> are not on any open order for this store (recorded on the invoice, nothing else changes)' : '') + '.</p>' +
       (I.bad.length ? '<div class="banner">These lines are not whole cases and were left out: ' + esc(I.bad.join(', ')) + '. Fix the file and read it again.</div>' : '') +
-      '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">On invoice</th><th class="num">Outstanding now</th><th class="num">Cleared</th><th class="num">Not ordered</th><th class="num">Still outstanding after</th></tr></thead><tbody>' +
+      '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">On document</th><th class="num">Outstanding now</th><th class="num">' + (I.kind === 'credit' ? 'Cancelled' : 'Cleared') + '</th><th class="num">Not ordered</th><th class="num">Still outstanding after</th></tr></thead><tbody>' +
       rows.map((r) => '<tr><td><div class="nm">' + esc(r.name) + '</div><div class="meta">' + esc(r.code) + '</div></td><td class="num">' + r.q + '</td><td class="num">' + r.o + '</td><td class="num">' + r.clr + '</td><td class="num">' + (r.extra ? '<b>' + r.extra + '</b>' : '0') + '</td><td class="num">' + r.left + '</td></tr>').join('') +
-      '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn" data-act="invapply"' + (I.bad.length ? ' disabled' : '') + '>Apply to orders</button><button class="btn ghost" data-act="invdiscard">Discard</button></div>';
+      '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn" data-act="invapply"' + (I.bad.length ? ' disabled' : '') + '>' + (I.kind === 'credit' ? 'Apply credit note' : 'Apply to orders') + '</button><button class="btn ghost" data-act="invdiscard">Discard</button></div>';
   }
   const past = S.invoices || [];
   if (past.length) {
-    h += '<h3 style="margin-top:14px">Recorded invoices</h3><div class="scroll"><table><thead><tr><th>Invoice</th><th>Store</th><th>Date</th><th class="num">Cases</th><th class="num">Cleared</th><th></th></tr></thead><tbody>' +
-      past.map((v) => { const cs = (v.lines || []).reduce((a, l) => a + (Number(l.cases) || 0), 0); return '<tr><td>' + esc(v.invoice_no) + '</td><td>' + esc(storeName(v.store_id)) + '</td><td>' + esc(v.inv_date || ymd(Date.parse(v.created_at))) + '</td><td class="num">' + cs + '</td><td class="num">' + ((v.result && v.result.matched) || 0) + '</td><td>' + (v.reversed_at ? '<span class="muted small">Undone</span>' : '<button class="btn danger sm" data-act="invundo" data-id="' + esc(v.id) + '">Undo</button>') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    h += '<h3 style="margin-top:14px">Recorded invoices</h3><div class="scroll"><table><thead><tr><th>Number</th><th>Store</th><th>Date</th><th class="num">Cases</th><th class="num">Cleared</th><th></th></tr></thead><tbody>' +
+      past.map((v) => { const cs = (v.lines || []).reduce((a, l) => a + (Number(l.cases) || 0), 0); return '<tr><td>' + esc(v.invoice_no) + (v.kind === 'credit' ? ' <span class="muted small">(credit note)</span>' : '') + '</td><td>' + esc(storeName(v.store_id)) + '</td><td>' + esc(v.inv_date || ymd(Date.parse(v.created_at))) + '</td><td class="num">' + cs + '</td><td class="num">' + ((v.result && v.result.matched) || 0) + '</td><td>' + (v.reversed_at ? '<span class="muted small">Undone</span>' : '<button class="btn danger sm" data-act="invundo" data-id="' + esc(v.id) + '">Undo</button>') + '</td></tr>'; }).join('') + '</tbody></table></div>';
   }
   return h + '</details>';
 }
@@ -679,6 +681,7 @@ function viewAdmin() {
     '<div class="f"><label for="sld">Lead time (business days)</label><input id="sld" class="qty" type="number" min="1" value="' + S.settings.leadDays + '"></div>' +
     '<div class="f"><label for="scf">Orders close on</label><input id="scf" type="date" value="' + esc(S.settings.closeFrom) + '"></div>' +
     '<div class="f"><label for="sro">Orders reopen on</label><input id="sro" type="date" value="' + esc(S.settings.reopen) + '"></div>' +
+    '<div class="f"><label><input type="checkbox" id="sro2"' + (S.settings.recordOnly ? ' checked' : '') + '> Record-only mode (stores can enter orders at any time, even when the factory is closed)</label></div>' +
     '<button class="btn" data-act="savesettings">Save</button></div><p class="small muted">The default par applies to any product without its own par. Delivery is charged per order by pallet weight: HQ enters the weight and cost on each delivery order under All orders. The rate per kg is only used to suggest the cost when you enter a weight.</p></div>' +
     '<div class="card"><h2>Stores (' + S.settings.stores.length + ')</h2><div class="scroll" style="max-height:230px;overflow:auto"><table><thead><tr><th>Name</th><th>Region</th><th></th></tr></thead><tbody>' +
     S.settings.stores.map((s) => '<tr><td>' + esc(s.name) + '</td><td class="small">' + esc(s.region || '') + '</td><td><button class="btn danger sm" data-act="rmstore" data-id="' + esc(s.id) + '">Remove</button></td></tr>').join('') +
@@ -744,14 +747,14 @@ document.addEventListener('click', async (e) => {
   else if (act === 'invpaste') { const ta = $('#invtext'); S.inv.text = ta ? ta.value : S.inv.text; applyParsedInvoice(readPastedInvoice(S.inv.text), 'pasted lines'); draw(true); }
   else if (act === 'invdiscard') { S.inv = Object.assign(S.inv, { lines: null, bad: [], file: '', text: '', no: '', date: '' }); draw(true); }
   else if (act === 'invapply') {
-    if (!S.inv.no.trim()) return toast('Enter the invoice number first.');
+    if (!S.inv.no.trim()) return toast('Enter the document number first.');
     if (!S.inv.lines || !S.inv.lines.length) return;
     const pv = invPreview(), clr = pv.reduce((a, r) => a + r.clr, 0), ex = pv.reduce((a, r) => a + r.extra, 0);
-    if (!confirm('Record invoice ' + S.inv.no.trim() + ' for ' + storeName(S.inv.store) + '?\n\n' + clr + ' cases will be cleared from outstanding orders' + (ex ? '; ' + ex + ' cases are not on any open order.' : '.') + '\nYou can undo it afterwards.')) return;
-    const r = await run(sb.rpc('apply_invoice', { p_invoice: S.inv.no.trim(), p_store: S.inv.store, p_date: S.inv.date || null, p_lines: S.inv.lines }));
+    if (!confirm('Record ' + (S.inv.kind === 'credit' ? 'credit note ' : 'invoice ') + S.inv.no.trim() + ' for ' + storeName(S.inv.store) + '?\n\n' + clr + ' cases will be ' + (S.inv.kind === 'credit' ? 'cancelled' : 'cleared') + ' from outstanding orders' + (ex ? '; ' + ex + ' cases are not on any open order.' : '.') + '\nYou can undo it afterwards.')) return;
+    const r = await run(sb.rpc('apply_invoice', { p_invoice: S.inv.no.trim(), p_store: S.inv.store, p_date: S.inv.date || null, p_lines: S.inv.lines, p_kind: S.inv.kind }));
     if (r && r.data) {
       const d = r.data, extra = (d.extra || []).map((x) => x.code + ' x' + x.cases).join(', ');
-      S.invMsg = 'Recorded ' + S.inv.no.trim() + ': ' + d.matched + ' cases cleared from ' + storeName(S.inv.store) + '\'s outstanding orders.' + (extra ? ' Not on any open order: ' + extra + '.' : '');
+      S.invMsg = 'Recorded ' + S.inv.no.trim() + ': ' + d.matched + ' cases ' + (S.inv.kind === 'credit' ? 'cancelled' : 'cleared') + ' from ' + storeName(S.inv.store) + '\'s outstanding orders.' + (extra ? ' Not on any open order: ' + extra + '.' : '');
       S.inv = Object.assign(S.inv, { lines: null, bad: [], file: '', text: '', no: '', date: '' }); draw(true);
     }
   }
@@ -798,7 +801,7 @@ document.addEventListener('click', async (e) => {
   else if (act === 'demo') { toggleDemo(); }
   else if (act === 'import') importHistory();
   else if (act === 'savesettings') {
-    const s = { defaultPar: Math.max(1, Number($('#sdp').value) || 10), vat: Number($('#svat').value) || 0, ratePerKg: Number($('#srk').value) || 0, lastDelivery: $('#sld2').value || '', leadDays: Math.max(1, Number($('#sld').value) || 10), closeFrom: $('#scf').value || '', reopen: $('#sro').value || '' };
+    const s = { defaultPar: Math.max(1, Number($('#sdp').value) || 10), vat: Number($('#svat').value) || 0, ratePerKg: Number($('#srk').value) || 0, lastDelivery: $('#sld2').value || '', leadDays: Math.max(1, Number($('#sld').value) || 10), closeFrom: $('#scf').value || '', reopen: $('#sro').value || '', recordOnly: !!($('#sro2') && $('#sro2').checked) };
     await run(sb.from('settings').upsert({ id: 1, data: s }), 'Saved.');
   }
   else if (act === 'addstores') {
@@ -817,6 +820,7 @@ document.addEventListener('change', async (e) => {
   const t = e.target, act = t.dataset && t.dataset.act; if (!act) return;
   if (act === 'store') { setStore(t.value); draw(true); }
   else if (act === 'upload') { if (t.files && t.files[0]) await loadSheet(t.files[0]); }
+  else if (act === 'invkind') { S.inv.kind = t.value; draw(true); }
   else if (act === 'invstore') { S.inv.store = t.value; draw(true); }
   else if (act === 'invno') { S.inv.no = t.value; }
   else if (act === 'invdate') { S.inv.date = t.value; }

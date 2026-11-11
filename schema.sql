@@ -164,7 +164,7 @@ begin
     raise exception 'Add at least one product.';
   end if;
   select data into d from public.settings where id = 1;
-  if not public.is_hq() and d is not null
+  if not public.is_hq() and d is not null and coalesce(d->>'recordOnly','') <> 'true'
      and coalesce(d->>'closeFrom','') <> '' and coalesce(d->>'reopen','') <> ''
      and v_today >= (d->>'closeFrom')::date and v_today < (d->>'reopen')::date then
     raise exception 'The factory is closed to new orders until %.', to_char((d->>'reopen')::date, 'DD Mon YYYY');
@@ -220,6 +220,7 @@ create table if not exists public.invoices (
   changes jsonb not null default '[]'::jsonb,
   reversed_at timestamptz
 );
+alter table public.invoices add column if not exists kind text not null default 'invoice';
 create unique index if not exists invoices_live_no on public.invoices (invoice_no) where reversed_at is null;
 alter table public.invoices enable row level security;
 drop policy if exists invoices_hq on public.invoices;
@@ -229,17 +230,19 @@ create policy invoices_read on public.invoices for select to authenticated using
 
 -- HQ only. p_lines = [{"code":"M810","cases":5}, ...]. Delivered cases clear that store's oldest outstanding lines
 -- (ready first, then in production, then waiting). Anything left over is reported, never guessed.
-create or replace function public.apply_invoice(p_invoice text, p_store text, p_date date, p_lines jsonb) returns jsonb
+drop function if exists public.apply_invoice(text, text, date, jsonb);
+create or replace function public.apply_invoice(p_invoice text, p_store text, p_date date, p_lines jsonb, p_kind text default 'invoice') returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   r record; l record; remaining int; t int; changes jsonb := '[]'::jsonb; extra jsonb := '[]'::jsonb;
   matched int := 0; newid bigint; inv uuid; unknown jsonb := '[]'::jsonb;
 begin
   if auth.uid() is null or not public.is_hq() then raise exception 'Only HQ can record invoices.'; end if;
+  if p_kind not in ('invoice','credit') then raise exception 'Choose invoice or credit note.'; end if;
   if coalesce(trim(p_invoice), '') = '' then raise exception 'Enter the invoice number.'; end if;
   if not exists (select 1 from public.stores where id = p_store) then raise exception 'Choose a store.'; end if;
   if exists (select 1 from public.invoices where invoice_no = trim(p_invoice) and reversed_at is null) then
-    raise exception 'Invoice % has already been recorded. Undo it first if it was wrong.', trim(p_invoice);
+    raise exception 'Document % has already been recorded. Undo it first if it was wrong.', trim(p_invoice);
   end if;
   if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then raise exception 'The invoice has no lines.'; end if;
 
@@ -263,12 +266,12 @@ begin
       exit when remaining <= 0;
       t := least(l.cases, remaining);
       if t = l.cases then
-        update public.order_lines set status = 'done', filled = cases where id = l.id;
-        changes := changes || jsonb_build_object('op','u','id',l.id,'status',l.status,'cases',l.cases,'filled',l.filled,'new_status','done','new_cases',l.cases);
+        update public.order_lines set status = case when p_kind = 'credit' then 'cancelled' else 'done' end, filled = case when p_kind = 'credit' then filled else cases end where id = l.id;
+        changes := changes || jsonb_build_object('op','u','id',l.id,'status',l.status,'cases',l.cases,'filled',l.filled,'new_status',case when p_kind = 'credit' then 'cancelled' else 'done' end,'new_cases',l.cases);
       else
         update public.order_lines set cases = l.cases - t, filled = least(l.filled, l.cases - t) where id = l.id;
         insert into public.order_lines (order_id, code, cases, price, status, filled, released_at)
-          values (l.order_id, (select code from public.order_lines where id = l.id), t, l.price, 'done', t, l.released_at) returning id into newid;
+          values (l.order_id, (select code from public.order_lines where id = l.id), t, l.price, case when p_kind = 'credit' then 'cancelled' else 'done' end, case when p_kind = 'credit' then 0 else t end, l.released_at) returning id into newid;
         changes := changes || jsonb_build_object('op','u','id',l.id,'status',l.status,'cases',l.cases,'filled',l.filled,'new_status',l.status,'new_cases',l.cases - t)
                            || jsonb_build_object('op','i','id',newid);
       end if;
@@ -277,9 +280,9 @@ begin
     if remaining > 0 then extra := extra || jsonb_build_object('code', r.code, 'cases', remaining); end if;
   end loop;
 
-  insert into public.invoices (invoice_no, store_id, inv_date, lines, result, changes)
+  insert into public.invoices (invoice_no, store_id, inv_date, lines, result, changes, kind)
     values (trim(p_invoice), p_store, p_date, p_lines,
-            jsonb_build_object('matched', matched, 'extra', extra, 'unknown', unknown), changes)
+            jsonb_build_object('matched', matched, 'extra', extra, 'unknown', unknown), changes, p_kind)
     returning id into inv;
   return jsonb_build_object('id', inv, 'matched', matched, 'extra', extra, 'unknown', unknown);
 end $$;
@@ -322,7 +325,7 @@ end $$;
 revoke all on function public.place_order(text, text, date, text, jsonb) from public, anon;
 revoke all on function public.cancel_line(bigint) from public, anon;
 revoke all on function public.undo_invoice(uuid) from public, anon;
-revoke all on function public.apply_invoice(text, text, date, jsonb) from public, anon;
+revoke all on function public.apply_invoice(text, text, date, jsonb, text) from public, anon;
 revoke all on function public.delete_order(uuid) from public, anon;
 revoke all on function public.get_board() from public, anon;
 revoke all on function public.is_hq() from public, anon;
@@ -331,7 +334,7 @@ revoke all on function public.is_member() from public, anon;
 grant execute on function public.place_order(text, text, date, text, jsonb) to authenticated;
 grant execute on function public.cancel_line(bigint) to authenticated;
 grant execute on function public.undo_invoice(uuid) to authenticated;
-grant execute on function public.apply_invoice(text, text, date, jsonb) to authenticated;
+grant execute on function public.apply_invoice(text, text, date, jsonb, text) to authenticated;
 grant execute on function public.delete_order(uuid) to authenticated;
 grant execute on function public.get_board() to authenticated;
 grant execute on function public.is_hq() to authenticated;
