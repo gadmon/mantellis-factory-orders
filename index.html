@@ -511,6 +511,7 @@ function parseInvoiceRows(rows) {
   let qi = hdr.findIndex((c) => /^(cases?|qty|quantity)$/i.test(c));
   if (qi < 0) qi = hdr.findIndex((c) => /cases?|qty|quant/i.test(c) && !/price|per/i.test(c));
   if (qi < 0) return null;
+  const pi = hdr.findIndex((c) => /^(unit[ _]?price|price)$/i.test(c));
   const ii = hdr.findIndex((c) => /^(invoice|document)( ?no| number)?$/i.test(c)), di = hdr.findIndex((c) => /^date$/i.test(c)), si = hdr.findIndex((c) => /^store/i.test(c));
   const out = { lines: [], bad: [], inv: '', date: '', store: '' };
   rows.slice(h + 1).forEach((r) => {
@@ -518,7 +519,8 @@ function parseInvoiceRows(rows) {
     const q = Number(String(r[qi] == null ? '' : r[qi]).replace(/[^0-9.\-]/g, ''));
     if (!(q > 0)) return;
     if (q % 1 !== 0) { out.bad.push(code + ' (' + q + ')'); return; }
-    out.lines.push({ code, cases: q });
+    const pr = pi >= 0 && String(r[pi] == null ? '' : r[pi]).trim() !== '' ? Number(String(r[pi]).replace(/[^0-9.\-]/g, '')) : null;
+    out.lines.push(pr === 0 ? { code, cases: q, price: 0 } : { code, cases: q });
     if (ii >= 0 && !out.inv) out.inv = String(r[ii] || '').trim();
     if (di >= 0 && !out.date) out.date = normDate(r[di]);
     if (si >= 0 && !out.store) out.store = String(r[si] || '').trim();
@@ -548,17 +550,18 @@ function readPastedInvoice(text) {
     const tk = ln.trim().split(/[\s,;\t]+/).filter(Boolean); if (tk.length < 2 || /^code$/i.test(tk[0])) return;
     const q = Number(tk[1].replace(/[^0-9.\-]/g, '')); if (!(q > 0)) return;
     if (q % 1 !== 0) { bad.push(tk[0].toUpperCase() + ' (' + q + ')'); return; }
-    lines.push({ code: tk[0].toUpperCase(), cases: q });
+    lines.push(/^(free|sample|0|0\.0+)$/i.test(tk[2] || '') ? { code: tk[0].toUpperCase(), cases: q, price: 0 } : { code: tk[0].toUpperCase(), cases: q });
   });
   return { lines, bad, inv: '', date: '', store: '' };
 }
 function invPreview() {
   const up = {}; cat().forEach((p) => { up[p.code.toUpperCase()] = p; });
-  const agg = {}; (S.inv.lines || []).forEach((l) => { agg[l.code] = (agg[l.code] || 0) + l.cases; });
+  const agg = {}; (S.inv.lines || []).forEach((l) => { if (l.price === 0) return; agg[l.code] = (agg[l.code] || 0) + l.cases; });
   const open = {};
   S.orders.filter((o) => o.storeId === S.inv.store).forEach((o) => (o.lines || []).forEach((l) => { if (['pending', 'production', 'ready'].includes(l.status)) { const c = l.code.toUpperCase(); open[c] = (open[c] || 0) + l.cases; } }));
   return Object.keys(agg).sort().map((c) => { const q = agg[c], o = open[c] || 0, clr = Math.min(q, o); return { code: c, name: up[c] ? up[c].name : '(not in the catalogue)', known: !!up[c], q, o, clr, extra: q - clr, left: o - clr }; });
 }
+function invFree() { const m = {}; (S.inv.lines || []).forEach((l) => { if (l.price === 0) m[l.code] = (m[l.code] || 0) + l.cases; }); return Object.keys(m).sort().map((c) => ({ code: c, cases: m[c] })); }
 function invPanel() {
   if (!S.admin) return '';
   const I = S.inv, stores = S.settings.stores.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -569,12 +572,13 @@ function invPanel() {
     '<div class="f"><label for="invno">Document number</label><input id="invno" data-act="invno" type="text" value="' + esc(I.no) + '" placeholder="e.g. IN737758" style="width:140px"></div>' +
     '<div class="f"><label for="invdate">Invoice date</label><input id="invdate" data-act="invdate" type="date" value="' + esc(I.date) + '"></div></div>' +
     '<div class="row" style="margin:8px 0"><div><label for="invfile">Invoice file (Excel or CSV with Code and Cases columns)</label><br><input type="file" id="invfile" data-act="invfile" accept=".xls,.xlsx,.xlsm,.csv"></div></div>' +
-    '<div><label for="invtext">Or paste the lines (one per line: code, then cases)</label><br><textarea id="invtext" data-act="invtext" rows="4" style="width:100%" placeholder="M810 5&#10;M720 1&#10;M940 60">' + esc(I.text) + '</textarea><div class="row" style="margin-top:4px"><button class="btn ghost sm" data-act="invpaste">Read pasted lines</button></div></div>' +
+    '<div><label for="invtext">Or paste the lines (one per line: code, then cases; add the word free for a free sample)</label><br><textarea id="invtext" data-act="invtext" rows="4" style="width:100%" placeholder="M810 5&#10;M720 1&#10;M940 60">' + esc(I.text) + '</textarea><div class="row" style="margin-top:4px"><button class="btn ghost sm" data-act="invpaste">Read pasted lines</button></div></div>' +
     '<p class="small muted">Photos and PDFs cannot be read on this page. Send the invoice to Claude to be turned into a CSV, or type the lines above.</p>';
   if (I.lines) {
-    const rows = invPreview(), tot = rows.reduce((a, r) => ({ q: a.q + r.q, clr: a.clr + r.clr, ex: a.ex + r.extra }), { q: 0, clr: 0, ex: 0 });
+    const free = invFree(), pmap = prodMap(), rows = invPreview(), tot = rows.reduce((a, r) => ({ q: a.q + r.q, clr: a.clr + r.clr, ex: a.ex + r.extra }), { q: 0, clr: 0, ex: 0 });
     h += '<h3 style="margin-top:10px">Check before applying (' + esc(I.file) + ')</h3>' +
       '<p class="small">' + num(tot.q) + ' cases on the ' + (I.kind === 'credit' ? 'credit note' : 'invoice') + '. <b>' + num(tot.clr) + '</b> will be ' + (I.kind === 'credit' ? 'cancelled' : 'cleared') + ' from ' + esc(storeName(I.store)) + '\'s outstanding orders' + (tot.ex ? ', and <b>' + num(tot.ex) + '</b> are not on any open order for this store (recorded on the invoice, nothing else changes)' : '') + '.</p>' +
+      (free.length ? '<div class="banner info"><b>Free samples (no cost):</b> ' + free.map((f) => esc((pmap[f.code] ? pmap[f.code].name : f.code) + ' x' + f.cases)).join(', ') + '. These are recorded on the invoice but do not clear any ordered stock.</div>' : '') +
       (I.bad.length ? '<div class="banner">These lines are not whole cases and were left out: ' + esc(I.bad.join(', ')) + '. Fix the file and read it again.</div>' : '') +
       '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">On document</th><th class="num">Outstanding now</th><th class="num">' + (I.kind === 'credit' ? 'Cancelled' : 'Cleared') + '</th><th class="num">Not ordered</th><th class="num">Still outstanding after</th></tr></thead><tbody>' +
       rows.map((r) => '<tr><td><div class="nm">' + esc(r.name) + '</div><div class="meta">' + esc(r.code) + '</div></td><td class="num">' + r.q + '</td><td class="num">' + r.o + '</td><td class="num">' + r.clr + '</td><td class="num">' + (r.extra ? '<b>' + r.extra + '</b>' : '0') + '</td><td class="num">' + r.left + '</td></tr>').join('') +
@@ -753,8 +757,8 @@ document.addEventListener('click', async (e) => {
     if (!confirm('Record ' + (S.inv.kind === 'credit' ? 'credit note ' : 'invoice ') + S.inv.no.trim() + ' for ' + storeName(S.inv.store) + '?\n\n' + clr + ' cases will be ' + (S.inv.kind === 'credit' ? 'cancelled' : 'cleared') + ' from outstanding orders' + (ex ? '; ' + ex + ' cases are not on any open order.' : '.') + '\nYou can undo it afterwards.')) return;
     const r = await run(sb.rpc('apply_invoice', { p_invoice: S.inv.no.trim(), p_store: S.inv.store, p_date: S.inv.date || null, p_lines: S.inv.lines, p_kind: S.inv.kind }));
     if (r && r.data) {
-      const d = r.data, extra = (d.extra || []).map((x) => x.code + ' x' + x.cases).join(', ');
-      S.invMsg = 'Recorded ' + S.inv.no.trim() + ': ' + d.matched + ' cases ' + (S.inv.kind === 'credit' ? 'cancelled' : 'cleared') + ' from ' + storeName(S.inv.store) + '\'s outstanding orders.' + (extra ? ' Not on any open order: ' + extra + '.' : '');
+      const d = r.data, extra = (d.extra || []).map((x) => x.code + ' x' + x.cases).join(', '), fr = (d.free || []).map((x) => x.code + ' x' + x.cases).join(', ');
+      S.invMsg = 'Recorded ' + S.inv.no.trim() + ': ' + d.matched + ' cases ' + (S.inv.kind === 'credit' ? 'cancelled' : 'cleared') + ' from ' + storeName(S.inv.store) + '\'s outstanding orders.' + (extra ? ' Not on any open order: ' + extra + '.' : '') + (fr ? ' Free samples received: ' + fr + '.' : '');
       S.inv = Object.assign(S.inv, { lines: null, bad: [], file: '', text: '', no: '', date: '' }); draw(true);
     }
   }

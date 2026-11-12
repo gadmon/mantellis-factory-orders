@@ -235,7 +235,7 @@ create or replace function public.apply_invoice(p_invoice text, p_store text, p_
 language plpgsql security definer set search_path = public as $$
 declare
   r record; l record; remaining int; t int; changes jsonb := '[]'::jsonb; extra jsonb := '[]'::jsonb;
-  matched int := 0; newid bigint; inv uuid; unknown jsonb := '[]'::jsonb;
+  matched int := 0; newid bigint; inv uuid; unknown jsonb := '[]'::jsonb; free jsonb := '[]'::jsonb;
 begin
   if auth.uid() is null or not public.is_hq() then raise exception 'Only HQ can record invoices.'; end if;
   if p_kind not in ('invoice','credit') then raise exception 'Choose invoice or credit note.'; end if;
@@ -250,6 +250,7 @@ begin
     select upper(trim(x->>'code')) as code, sum((x->>'cases')::numeric)::int as cases
       from jsonb_array_elements(p_lines) x
      where coalesce(trim(x->>'code'), '') <> '' and (x->>'cases')::numeric > 0
+       and not (coalesce(x->>'price', '') <> '' and (x->>'price')::numeric = 0)
      group by 1 order by 1
   loop
     if not exists (select 1 from public.products where upper(code) = r.code) then
@@ -280,11 +281,18 @@ begin
     if remaining > 0 then extra := extra || jsonb_build_object('code', r.code, 'cases', remaining); end if;
   end loop;
 
+  -- zero-price lines are free samples: recorded, but never matched to orders
+  select coalesce(jsonb_agg(jsonb_build_object('code', c, 'cases', n)), '[]'::jsonb) into free from (
+    select upper(trim(x->>'code')) as c, sum((x->>'cases')::numeric)::int as n
+      from jsonb_array_elements(p_lines) x
+     where coalesce(trim(x->>'code'), '') <> '' and (x->>'cases')::numeric > 0
+       and coalesce(x->>'price', '') <> '' and (x->>'price')::numeric = 0
+     group by 1) f;
   insert into public.invoices (invoice_no, store_id, inv_date, lines, result, changes, kind)
     values (trim(p_invoice), p_store, p_date, p_lines,
-            jsonb_build_object('matched', matched, 'extra', extra, 'unknown', unknown), changes, p_kind)
+            jsonb_build_object('matched', matched, 'extra', extra, 'unknown', unknown, 'free', free), changes, p_kind)
     returning id into inv;
-  return jsonb_build_object('id', inv, 'matched', matched, 'extra', extra, 'unknown', unknown);
+  return jsonb_build_object('id', inv, 'matched', matched, 'extra', extra, 'unknown', unknown, 'free', free);
 end $$;
 
 -- HQ only. Puts every order line back exactly as it was before the invoice was applied.
