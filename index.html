@@ -595,14 +595,15 @@ function outstandingTable(storeId) {
   const p = prodMap(), m = {};
   S.orders.filter((o) => o.storeId === storeId).forEach((o) => (o.lines || []).forEach((l) => {
     if (l.status === 'cancelled') return;
-    const r = m[l.code] = m[l.code] || { ordered: 0, delivered: 0, wait: 0, prod: 0, ready: 0 };
-    r.ordered += l.cases; if (l.status === 'done') r.delivered += l.cases; else if (l.status === 'ready') r.ready += l.cases; else if (l.status === 'production') r.prod += l.cases; else r.wait += l.cases;
+    const r = m[l.code] = m[l.code] || { ordered: 0, delivered: 0, wait: 0, prod: 0, ready: 0, val: 0 };
+    r.ordered += l.cases; if (l.status !== 'done') r.val += l.cases * (l.price || 0); if (l.status === 'done') r.delivered += l.cases; else if (l.status === 'ready') r.ready += l.cases; else if (l.status === 'production') r.prod += l.cases; else r.wait += l.cases;
   }));
   const rows = Object.keys(m).map((c) => ({ c, r: m[c], out: m[c].wait + m[c].prod + m[c].ready })).filter((x) => x.out > 0).sort((a, b) => b.out - a.out);
   if (!rows.length) return '<div class="card"><h3>Still outstanding</h3><p class="muted">Nothing is outstanding. Everything ordered has been delivered.</p></div>';
-  const T = rows.reduce((a, x) => ({ out: a.out + x.out, del: a.del + x.r.delivered, ord: a.ord + x.r.ordered }), { out: 0, del: 0, ord: 0 });
-  return '<div class="card"><h3>Still outstanding for ' + esc(storeName(storeId)) + '</h3><p class="small muted">' + num(T.out) + ' cases still to come. ' + num(T.del) + ' of the cases on these products have already been delivered.</p><div class="scroll"><table><thead><tr><th>Product</th><th class="num">Ordered</th><th class="num">Delivered</th><th class="num">Outstanding</th><th class="num">Waiting</th><th class="num">In production</th><th class="num">Ready</th></tr></thead><tbody>' +
-    rows.map((x) => '<tr><td><div class="nm">' + esc(p[x.c] ? p[x.c].name : x.c) + '</div><div class="meta">' + esc(x.c) + '</div></td><td class="num">' + x.r.ordered + '</td><td class="num">' + x.r.delivered + '</td><td class="num"><b>' + x.out + '</b></td><td class="num">' + x.r.wait + '</td><td class="num">' + x.r.prod + '</td><td class="num">' + x.r.ready + '</td></tr>').join('') + '</tbody></table></div></div>';
+  const T = rows.reduce((a, x) => ({ out: a.out + x.out, del: a.del + x.r.delivered, ord: a.ord + x.r.ordered, val: a.val + x.r.val }), { out: 0, del: 0, ord: 0, val: 0 });
+  const vr = Number(S.settings.vat) || 0, vat = T.val * vr / 100;
+  return '<div class="card"><h3>Still outstanding for ' + esc(storeName(storeId)) + '</h3><p class="small muted">' + num(T.out) + ' cases still to come. ' + num(T.del) + ' of the cases on these products have already been delivered.</p><div class="banner info"><b>Balance owing for stock not yet delivered: ' + money(T.val + vat) + ' incl. VAT</b> (' + money(T.val) + ' excl. VAT + ' + money(vat) + ' VAT). Delivery charges are not included.</div><div class="scroll"><table><thead><tr><th>Product</th><th class="num">Ordered</th><th class="num">Delivered</th><th class="num">Outstanding</th><th class="num">Value incl. VAT</th><th class="num">Waiting</th><th class="num">In production</th><th class="num">Ready</th></tr></thead><tbody>' +
+    rows.map((x) => '<tr><td><div class="nm">' + esc(p[x.c] ? p[x.c].name : x.c) + '</div><div class="meta">' + esc(x.c) + '</div></td><td class="num">' + x.r.ordered + '</td><td class="num">' + x.r.delivered + '</td><td class="num"><b>' + x.out + '</b></td><td class="num">' + money(x.r.val * (1 + vr / 100)) + '</td><td class="num">' + x.r.wait + '</td><td class="num">' + x.r.prod + '</td><td class="num">' + x.r.ready + '</td></tr>').join('') + '</tbody></table></div></div>';
 }
 function viewMine() {
   if (!S.me.storeId) return '<div class="banner">Choose your store at the top to see its orders.</div>';
