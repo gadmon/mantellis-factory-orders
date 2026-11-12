@@ -187,9 +187,40 @@ begin
   if auth.uid() is null then raise exception 'Not signed in.'; end if;
   update public.order_lines l set status = 'cancelled'
     from public.orders o
-   where l.id = p_line and o.id = l.order_id and l.status = 'pending'
+   where l.id = p_line and o.id = l.order_id and l.status in ('pending','production','ready')
      and (public.is_hq() or o.store_id = public.my_store());
   if not found then raise exception 'That line can no longer be cancelled.'; end if;
+end $$;
+
+-- Correct the number of cases on a line at any time until it is delivered. HQ or the store that owns the order.
+create or replace function public.set_line_cases(p_line bigint, p_cases int) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Not signed in.'; end if;
+  if p_cases is null or p_cases < 1 then raise exception 'Cases must be at least 1. Use Cancel line to remove it.'; end if;
+  update public.order_lines l set cases = p_cases, filled = least(l.filled, p_cases)
+    from public.orders o
+   where l.id = p_line and o.id = l.order_id and l.status in ('pending','production','ready')
+     and (public.is_hq() or o.store_id = public.my_store());
+  if not found then raise exception 'That line can no longer be changed.'; end if;
+end $$;
+
+-- Add a product that was missed to an existing order, until the order is delivered.
+create or replace function public.add_line(p_order uuid, p_code text, p_cases int) returns void
+language plpgsql security definer set search_path = public as $$
+declare s text; pr public.products;
+begin
+  if auth.uid() is null then raise exception 'Not signed in.'; end if;
+  select store_id into s from public.orders where id = p_order;
+  if not found then raise exception 'That order no longer exists.'; end if;
+  if not (public.is_hq() or s = public.my_store()) then raise exception 'Not allowed.'; end if;
+  if p_cases is null or p_cases < 1 then raise exception 'Cases must be at least 1.'; end if;
+  select * into pr from public.products where code = p_code and active;
+  if not found then raise exception 'Unknown product %.', p_code; end if;
+  if not exists (select 1 from public.order_lines where order_id = p_order and status in ('pending','production','ready')) then
+    raise exception 'This order is already delivered or cancelled. Start a new order instead.';
+  end if;
+  insert into public.order_lines (order_id, code, cases, price) values (p_order, pr.code, p_cases, pr.case_price);
 end $$;
 
 -- Remove a whole order entered by mistake. A store can do this only while nothing in it has started production; HQ can always.
@@ -332,6 +363,8 @@ end $$;
 
 revoke all on function public.place_order(text, text, date, text, jsonb) from public, anon;
 revoke all on function public.cancel_line(bigint) from public, anon;
+revoke all on function public.set_line_cases(bigint, int) from public, anon;
+revoke all on function public.add_line(uuid, text, int) from public, anon;
 revoke all on function public.undo_invoice(uuid) from public, anon;
 revoke all on function public.apply_invoice(text, text, date, jsonb, text) from public, anon;
 revoke all on function public.delete_order(uuid) from public, anon;
@@ -341,6 +374,8 @@ revoke all on function public.my_store() from public, anon;
 revoke all on function public.is_member() from public, anon;
 grant execute on function public.place_order(text, text, date, text, jsonb) to authenticated;
 grant execute on function public.cancel_line(bigint) to authenticated;
+grant execute on function public.set_line_cases(bigint, int) to authenticated;
+grant execute on function public.add_line(uuid, text, int) to authenticated;
 grant execute on function public.undo_invoice(uuid) to authenticated;
 grant execute on function public.apply_invoice(text, text, date, jsonb, text) to authenticated;
 grant execute on function public.delete_order(uuid) to authenticated;

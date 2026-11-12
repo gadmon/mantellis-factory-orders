@@ -118,7 +118,7 @@ const S = {
   orders: [], board: {}, hist: [], profiles: [], profile: null, auth: 'boot', authMsg: '', authEm: '', cart: {}, tab: 'board',
   f: { q: '', list: 'all', state: 'all', sort: 'close' },
   of: { store: 'all', status: 'open' }, aview: 'product',
-  inv: { kind: 'invoice', store: 'somerset-west', no: '', date: '', lines: null, bad: [], file: '', text: '' }, invoices: [], invMsg: '',
+  open: {}, inv: { kind: 'invoice', store: 'somerset-west', no: '', date: '', lines: null, bad: [], file: '', text: '' }, invoices: [], invMsg: '',
   me: { storeId: null }, admin: false, userId: null,
   demo: false, conn: 'connecting', method: 'collect', needBy: '', notes: '', fcMsg: '', importLog: '', exportText: '',
   adminQ: '', up: null
@@ -479,16 +479,17 @@ function orderProgress(o) {
 function orderCard(o, admin) {
   const st = orderStatus(o), t = orderTotals(o), p = prodMap();
   const mineOrAdmin = admin || o.storeId === S.me.storeId;
-  let h = '<details class="ord"><summary><b>' + esc(o.storeName || storeName(o.storeId)) + '</b><span class="muted small">' + esc(ymd(o.createdAt)) + '</span>' +
+  let h = '<details class="ord" data-oid="' + esc(o.id) + '"' + (S.open[o.id] ? ' open' : '') + '><summary><b>' + esc(o.storeName || storeName(o.storeId)) + '</b><span class="muted small">' + esc(ymd(o.createdAt)) + '</span>' +
     '<span class="chip ' + (st === 'pending' ? 'far' : st === 'cancelled' ? 'crit' : st === 'done' ? 'info' : 'go') + '">' + STATUS[st] + '</span>' +
     (function () { const pg = orderProgress(o); return pg.tot ? '<span class="ordprog"><span class="track" role="img" aria-label="' + pg.f + ' of ' + pg.tot + ' cases filled"><span class="fill go" style="width:' + pg.pct + '%"></span></span><span class="small muted">' + num(pg.f) + ' of ' + num(pg.tot) + ' cases filled</span></span>' : ''; })() + '<span class="chip info">' + (o.method === 'deliver' ? 'Delivery' : 'Collection') + '</span>' + (o.needBy ? '<span class="small muted">Needed by ' + esc(o.needBy) + '</span>' : '') +
     '<span style="margin-left:auto" class="num">' + money(t.total) + ' incl. VAT' + (t.tbc ? ' + delivery' : '') + '</span></summary><div class="body">';
   h += '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">Cases</th><th class="num">Value</th><th>Status</th><th></th></tr></thead><tbody>';
   (o.lines || []).forEach((l) => {
-    h += '<tr><td><div class="nm">' + esc(p[l.code] ? p[l.code].name : l.code) + '</div><div class="meta">' + esc(l.code) + '</div></td><td class="num">' + l.cases + '</td><td class="num">' + money(l.cases * (l.price || 0)) + '</td><td>' + STATUS[l.status] + (l.status !== 'pending' && l.status !== 'cancelled' ? '<div class="meta">' + lineFilled(l) + ' of ' + l.cases + ' cases filled</div>' : '') + (admin && l.status === 'production' ? '<div class="row" style="margin-top:4px"><input class="qty" type="number" min="0" max="' + l.cases + '" id="fl-' + l.id + '" aria-label="Cases filled for ' + esc(l.code) + '" value="' + (l.filled || 0) + '"><button class="btn ghost sm" data-act="savefill" data-lid="' + l.id + '" data-max="' + l.cases + '">Save filled</button></div>' : '') + (l.status === 'production' && l.releasedAt ? '<div class="meta">Ready by ~' + fdate(addBD(l.releasedAt, S.settings.leadDays)) + (afterLastDelivery(addBD(l.releasedAt, S.settings.leadDays)) ? ' (after the ' + fdate(Date.parse(S.settings.lastDelivery)) + ' cut-off, held to January)' : '') + '</div>' : '') + '</td><td>' +
-      (l.status === 'pending' && mineOrAdmin ? '<button class="btn danger sm" data-act="cancelline" data-lid="' + l.id + '">Cancel line</button>' : '') + '</td></tr>';
+    h += '<tr><td><div class="nm">' + esc(p[l.code] ? p[l.code].name : l.code) + '</div><div class="meta">' + esc(l.code) + '</div></td><td class="num">' + (mineOrAdmin && ['pending', 'production', 'ready'].includes(l.status) ? '<input class="qty" type="number" min="1" id="ec-' + l.id + '" aria-label="Cases for ' + esc(l.code) + '" value="' + l.cases + '"><br><button class="btn ghost sm" data-act="savecases" data-lid="' + l.id + '">Save cases</button>' : l.cases) + '</td><td class="num">' + money(l.cases * (l.price || 0)) + '</td><td>' + STATUS[l.status] + (l.status !== 'pending' && l.status !== 'cancelled' ? '<div class="meta">' + lineFilled(l) + ' of ' + l.cases + ' cases filled</div>' : '') + (admin && l.status === 'production' ? '<div class="row" style="margin-top:4px"><input class="qty" type="number" min="0" max="' + l.cases + '" id="fl-' + l.id + '" aria-label="Cases filled for ' + esc(l.code) + '" value="' + (l.filled || 0) + '"><button class="btn ghost sm" data-act="savefill" data-lid="' + l.id + '" data-max="' + l.cases + '">Save filled</button></div>' : '') + (l.status === 'production' && l.releasedAt ? '<div class="meta">Ready by ~' + fdate(addBD(l.releasedAt, S.settings.leadDays)) + (afterLastDelivery(addBD(l.releasedAt, S.settings.leadDays)) ? ' (after the ' + fdate(Date.parse(S.settings.lastDelivery)) + ' cut-off, held to January)' : '') + '</div>' : '') + '</td><td>' +
+      (['pending', 'production', 'ready'].includes(l.status) && mineOrAdmin ? '<button class="btn danger sm" data-act="cancelline" data-lid="' + l.id + '">Cancel line</button>' : '') + '</td></tr>';
   });
-  h += '</tbody></table></div>' + (o.notes ? '<p class="small"><b>Notes:</b> ' + esc(o.notes) + '</p>' : '') +
+  const editable = mineOrAdmin && (o.lines || []).some((l) => ['pending', 'production', 'ready'].includes(l.status));
+  h += '</tbody></table></div>' + (editable ? '<div class="bar" style="margin-top:6px"><div class="f"><label for="ap-' + esc(o.id) + '">Add a product missed from this order</label><select id="ap-' + esc(o.id) + '">' + cat().filter((x) => x.active !== false && x.kind !== 'supply').map((x) => '<option value="' + esc(x.code) + '">' + esc(x.name) + ' (' + esc(x.code) + ')</option>').join('') + '</select></div><div class="f"><label for="an-' + esc(o.id) + '">Cases</label><input class="qty" type="number" min="1" id="an-' + esc(o.id) + '" value="1"></div><button class="btn sm" data-act="addline" data-oid="' + esc(o.id) + '">Add to order</button></div>' : '') + (o.notes ? '<p class="small"><b>Notes:</b> ' + esc(o.notes) + '</p>' : '') +
     (mineOrAdmin ? '<div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="reorder" data-oid="' + esc(o.id) + '">Repeat this order</button>' + (admin || (o.lines || []).every((l) => l.status === 'pending' || l.status === 'cancelled') ? '<button class="btn danger sm" data-act="delorder" data-oid="' + esc(o.id) + '">Delete this order</button>' : '') + '</div>' : '') +
     (o.method === 'deliver' ? (o.fee != null ? '<p class="small">Delivery: ' + money(o.fee) + ' excl. VAT' + (o.palletKg ? ' for ' + num(o.palletKg) + ' kg of pallet' : '') + ', set by HQ.</p>' : '<p class="small muted">Delivery cost to be set by HQ once the pallet is weighed.</p>') : '') +
     (admin && o.method === 'deliver' ? '<div class="bar"><div class="f"><label for="kg-' + esc(o.id) + '">Pallet weight (kg)</label><input class="qty" type="number" min="0" id="kg-' + esc(o.id) + '" value="' + (o.palletKg || '') + '"></div><div class="f"><label for="fee-' + esc(o.id) + '">Delivery cost, excl. VAT (R)</label><input class="qty" style="width:110px" type="number" min="0" step="0.01" id="fee-' + esc(o.id) + '" value="' + (o.fee == null ? '' : o.fee) + '" placeholder="' + (S.settings.ratePerKg ? 'kg × rate' : '') + '"></div><button class="btn sm" data-act="savefee" data-oid="' + esc(o.id) + '">Save delivery cost</button></div>' : '') + '</div></details>';
@@ -565,7 +566,7 @@ function invFree() { const m = {}; (S.inv.lines || []).forEach((l) => { if (l.pr
 function invPanel() {
   if (!S.admin) return '';
   const I = S.inv, stores = S.settings.stores.slice().sort((a, b) => a.name.localeCompare(b.name));
-  let h = '<details class="card" ' + (I.lines || S.invMsg ? 'open' : '') + '><summary style="cursor:pointer"><b>Record a factory invoice or credit note</b> <span class="muted small">an invoice clears what was delivered; a credit note cancels what will not be supplied</span></summary>';
+  let h = '<details class="card" data-keep="invpanel" ' + (I.lines || S.invMsg || S.open.invpanel ? 'open' : '') + '><summary style="cursor:pointer"><b>Record a factory invoice or credit note</b> <span class="muted small">an invoice clears what was delivered; a credit note cancels what will not be supplied</span></summary>';
   if (S.invMsg) h += '<div class="banner info" style="margin-top:8px">' + esc(S.invMsg) + '</div>';
   h += '<div class="bar" style="margin-top:8px"><div class="f"><label for="invstore">Store</label><select id="invstore" data-act="invstore">' + stores.map((s) => '<option value="' + esc(s.id) + '"' + (I.store === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></div>' +
     '<div class="f"><label for="invkind">Type</label><select id="invkind" data-act="invkind"><option value="invoice"' + (I.kind === 'invoice' ? ' selected' : '') + '>Tax invoice (delivered)</option><option value="credit"' + (I.kind === 'credit' ? ' selected' : '') + '>Credit note (factory will not supply)</option></select></div>' +
@@ -611,7 +612,7 @@ function viewMine() {
   const open = list.filter((o) => !['done', 'cancelled'].includes(orderStatus(o))), closed = list.filter((o) => ['done', 'cancelled'].includes(orderStatus(o)));
   return outstandingTable(S.me.storeId) + '<h2 style="margin:10px 0">Open orders for ' + esc(storeName(S.me.storeId)) + '</h2>' +
     (open.length ? open.map((o) => orderCard(o, S.admin)).join('') : '<div class="empty">' + (list.length ? 'No open orders. Everything has been delivered.' : 'No orders yet.') + '</div>') +
-    (closed.length ? '<details style="margin-top:12px"><summary class="muted" style="cursor:pointer">Delivered and cancelled orders (' + closed.length + ')</summary>' + closed.map((o) => orderCard(o, S.admin)).join('') + '</details>' : '');
+    (closed.length ? '<details style="margin-top:12px" data-keep="closed"' + (S.open.closed ? ' open' : '') + '><summary class="muted" style="cursor:pointer">Delivered and cancelled orders (' + closed.length + ')</summary>' + closed.map((o) => orderCard(o, S.admin)).join('') + '</details>' : '');
 }
 function viewAll() {
   derive();
@@ -712,6 +713,10 @@ function authView() {
   if (S.auth === 'recover') return wrap('<h2>Choose a new password</h2><form id="recoverForm"><div class="f"><label for="np">New password (at least 8 characters)</label><input id="np" type="password" autocomplete="new-password" minlength="8" required></div><div class="row" style="margin-top:12px"><button class="btn" type="submit">Save password</button></div></form>' + (S.authMsg ? '<p class="small">' + esc(S.authMsg) + '</p>' : ''));
   return wrap('<h2>Sign in</h2><form id="loginForm"><div class="f"><label for="em">Email</label><input id="em" type="email" autocomplete="username" required value="' + esc(S.authEm) + '"></div><div class="f" style="margin-top:8px"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div><div class="row" style="margin-top:12px"><button class="btn" type="submit">Sign in</button><button class="btn ghost" type="button" data-act="forgot">Forgot password</button></div></form>' + (S.authMsg ? '<p class="small">' + esc(S.authMsg) + '</p>' : ''));
 }
+document.addEventListener('toggle', (e) => {
+  const d = e.target; if (!d || d.tagName !== 'DETAILS') return;
+  const k = d.dataset.oid || d.dataset.keep; if (k) { if (d.open) S.open[k] = true; else delete S.open[k]; }
+}, true);
 function draw(force) {
   if (S.auth !== 'in') { drawHeader(); $('#main').innerHTML = authView(); return; }
   const a = document.activeElement;
@@ -767,7 +772,9 @@ document.addEventListener('click', async (e) => {
     if (!confirm('Undo this invoice? Every order line it changed goes back to how it was.')) return;
     await run(sb.rpc('undo_invoice', { p_invoice: b.dataset.id }), 'Invoice undone.');
   }
-  else if (act === 'cancelline') { await run(sb.rpc('cancel_line', { p_line: Number(b.dataset.lid) }), 'Line cancelled.'); }
+  else if (act === 'savecases') { const v = Number(($('#ec-' + b.dataset.lid) || {}).value); if (!(v >= 1) || v % 1) return toast('Enter a whole number of cases, 1 or more.'); await run(sb.rpc('set_line_cases', { p_line: Number(b.dataset.lid), p_cases: v }), 'Cases updated.'); }
+  else if (act === 'addline') { const sel = $('#ap-' + b.dataset.oid), n = Number(($('#an-' + b.dataset.oid) || {}).value); if (!sel || !(n >= 1) || n % 1) return toast('Choose a product and a whole number of cases.'); await run(sb.rpc('add_line', { p_order: b.dataset.oid, p_code: sel.value, p_cases: n }), 'Product added.'); }
+  else if (act === 'cancelline') { if (!confirm('Remove this line from the order?')) return; await run(sb.rpc('cancel_line', { p_line: Number(b.dataset.lid) }), 'Line removed.'); }
   else if (act === 'upapply') {
     const r = upLines(); if (!r.lines.length) return;
     if (S.up.mode === 'replace') S.cart = {};
