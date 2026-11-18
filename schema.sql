@@ -259,7 +259,7 @@ drop policy if exists invoices_read on public.invoices;
 create policy invoices_hq   on public.invoices for all    to authenticated using (public.is_hq()) with check (public.is_hq());
 create policy invoices_read on public.invoices for select to authenticated using (store_id = public.my_store());
 
--- HQ only. p_lines = [{"code":"M810","cases":5}, ...]. Delivered cases clear that store's oldest outstanding lines
+-- HQ, or a store for its own store only. p_lines = [{"code":"M810","cases":5}, ...]. Delivered cases clear that store's oldest outstanding lines
 -- (ready first, then in production, then waiting). Anything left over is reported, never guessed.
 drop function if exists public.apply_invoice(text, text, date, jsonb);
 create or replace function public.apply_invoice(p_invoice text, p_store text, p_date date, p_lines jsonb, p_kind text default 'invoice') returns jsonb
@@ -268,7 +268,7 @@ declare
   r record; l record; remaining int; t int; changes jsonb := '[]'::jsonb; extra jsonb := '[]'::jsonb;
   matched int := 0; newid bigint; inv uuid; unknown jsonb := '[]'::jsonb; free jsonb := '[]'::jsonb;
 begin
-  if auth.uid() is null or not public.is_hq() then raise exception 'Only HQ can record invoices.'; end if;
+  if auth.uid() is null or not (public.is_hq() or (public.my_store() is not null and p_store = public.my_store())) then raise exception 'You can only record invoices for your own store.'; end if;
   if p_kind not in ('invoice','credit') then raise exception 'Choose invoice or credit note.'; end if;
   if coalesce(trim(p_invoice), '') = '' then raise exception 'Enter the invoice number.'; end if;
   if not exists (select 1 from public.stores where id = p_store) then raise exception 'Choose a store.'; end if;
@@ -326,14 +326,15 @@ begin
   return jsonb_build_object('id', inv, 'matched', matched, 'extra', extra, 'unknown', unknown, 'free', free);
 end $$;
 
--- HQ only. Puts every order line back exactly as it was before the invoice was applied.
+-- HQ, or the store that recorded it. Puts every order line back exactly as it was before the invoice was applied.
 create or replace function public.undo_invoice(p_invoice uuid) returns void
 language plpgsql security definer set search_path = public as $$
 declare inv record; c jsonb; i int;
 begin
-  if auth.uid() is null or not public.is_hq() then raise exception 'Only HQ can undo invoices.'; end if;
+  if auth.uid() is null then raise exception 'Not signed in.'; end if;
   select * into inv from public.invoices where id = p_invoice for update;
   if not found then raise exception 'Invoice not found.'; end if;
+  if not (public.is_hq() or coalesce(inv.store_id = public.my_store(), false)) then raise exception 'Not allowed.'; end if;
   if inv.reversed_at is not null then raise exception 'That invoice was already undone.'; end if;
   for i in reverse (jsonb_array_length(inv.changes) - 1) .. 0 loop
     c := inv.changes -> i;
@@ -541,3 +542,29 @@ insert into public.products (code, name, lists, category, pack, per_case, case_p
 -- 1. In Supabase: Authentication > Users > Add user (tick Auto Confirm User) for the first HQ person.
 -- 2. Then run this one line with their email, and they are HQ:
 --    update public.profiles set role = 'hq' where email = 'hq@example.com';
+
+-- Manual adjustments for HQ and store logins. Safe to run more than once.
+-- 1. A store (or HQ) can mark cases on an open line as received, in full or in part.
+create or replace function public.receive_line(p_line bigint, p_cases int) returns void
+language plpgsql security definer set search_path = public as $$
+declare l record;
+begin
+  if auth.uid() is null then raise exception 'Not signed in.'; end if;
+  if p_cases is null or p_cases < 1 then raise exception 'Cases received must be at least 1.'; end if;
+  select ol.id, ol.order_id, ol.code, ol.cases, ol.price, ol.status, ol.filled, ol.released_at, o.store_id into l
+    from public.order_lines ol join public.orders o on o.id = ol.order_id
+   where ol.id = p_line for update of ol;
+  if not found then raise exception 'That line no longer exists.'; end if;
+  if not (public.is_hq() or l.store_id = public.my_store()) then raise exception 'Not allowed.'; end if;
+  if l.status not in ('pending','production','ready') then raise exception 'That line has already been delivered or cancelled.'; end if;
+  if p_cases > l.cases then raise exception 'That is more than the % cases on this line.', l.cases; end if;
+  if p_cases = l.cases then
+    update public.order_lines set status = 'done', filled = cases where id = l.id;
+  else
+    update public.order_lines set cases = l.cases - p_cases, filled = least(l.filled, l.cases - p_cases) where id = l.id;
+    insert into public.order_lines (order_id, code, cases, price, status, filled, released_at)
+      values (l.order_id, l.code, p_cases, l.price, 'done', p_cases, l.released_at);
+  end if;
+end $$;
+revoke all on function public.receive_line(bigint, int) from public, anon;
+grant execute on function public.receive_line(bigint, int) to authenticated;

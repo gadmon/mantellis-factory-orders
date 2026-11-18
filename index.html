@@ -185,10 +185,10 @@ async function loadAll() {
   S.pars = {}; S.catalog.forEach((p) => { if (p.par > 0) S.pars[p.code] = p.par; });
   S.catalogFromDb = true;
   S.orders = mapOrders(await pageAll(() => sb.from('orders').select('*, order_lines(*)').order('created_at', { ascending: false }).order('id')));
+  try { S.invoices = await q(sb.from('invoices').select('id,invoice_no,kind,store_id,inv_date,created_at,lines,result,reversed_at').order('created_at', { ascending: false })); } catch (e) { S.invoices = []; }
   if (S.admin) {
     S.hist = (await pageAll(() => sb.from('history').select('order_date,store_id,code,cases').order('id'))).map((r) => ({ t: Date.parse(r.order_date + 'T12:00:00Z'), store: r.store_id, code: r.code, cases: r.cases }));
     S.profiles = await q(sb.from('profiles').select('*').order('email'));
-    try { S.invoices = await q(sb.from('invoices').select('id,invoice_no,kind,store_id,inv_date,created_at,lines,result,reversed_at').order('created_at', { ascending: false })); } catch (e) { S.invoices = []; }
   } else {
     const b = await q(sb.rpc('get_board')); S.board = {}; b.forEach((r) => { S.board[r.code] = { cases: Number(r.cases), stores: Number(r.stores) }; });
   }
@@ -486,7 +486,7 @@ function orderCard(o, admin) {
   h += '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">Cases</th><th class="num">Value</th><th>Status</th><th></th></tr></thead><tbody>';
   (o.lines || []).forEach((l) => {
     h += '<tr><td><div class="nm">' + esc(p[l.code] ? p[l.code].name : l.code) + '</div><div class="meta">' + esc(l.code) + '</div></td><td class="num">' + (mineOrAdmin && ['pending', 'production', 'ready'].includes(l.status) ? '<input class="qty" type="number" min="1" id="ec-' + l.id + '" aria-label="Cases for ' + esc(l.code) + '" value="' + l.cases + '"><br><button class="btn ghost sm" data-act="savecases" data-lid="' + l.id + '">Save cases</button>' : l.cases) + '</td><td class="num">' + money(l.cases * (l.price || 0)) + '</td><td>' + STATUS[l.status] + (l.status !== 'pending' && l.status !== 'cancelled' ? '<div class="meta">' + lineFilled(l) + ' of ' + l.cases + ' cases filled</div>' : '') + (admin && l.status === 'production' ? '<div class="row" style="margin-top:4px"><input class="qty" type="number" min="0" max="' + l.cases + '" id="fl-' + l.id + '" aria-label="Cases filled for ' + esc(l.code) + '" value="' + (l.filled || 0) + '"><button class="btn ghost sm" data-act="savefill" data-lid="' + l.id + '" data-max="' + l.cases + '">Save filled</button></div>' : '') + (l.status === 'production' && l.releasedAt ? '<div class="meta">Ready by ~' + fdate(addBD(l.releasedAt, S.settings.leadDays)) + (afterLastDelivery(addBD(l.releasedAt, S.settings.leadDays)) ? ' (after the ' + fdate(Date.parse(S.settings.lastDelivery)) + ' cut-off, held to January)' : '') + '</div>' : '') + '</td><td>' +
-      (['pending', 'production', 'ready'].includes(l.status) && mineOrAdmin ? '<button class="btn danger sm" data-act="cancelline" data-lid="' + l.id + '">Cancel line</button>' : '') + '</td></tr>';
+      (['pending', 'production', 'ready'].includes(l.status) && mineOrAdmin ? '<div class="row"><input class="qty" type="number" min="1" max="' + l.cases + '" id="rv-' + l.id + '" aria-label="Cases received of ' + esc(l.code) + '" value="' + l.cases + '"><button class="btn sm" data-act="receive" data-lid="' + l.id + '" data-max="' + l.cases + '" data-code="' + esc(l.code) + '">Received</button></div><div style="margin-top:4px"><button class="btn danger sm" data-act="cancelline" data-lid="' + l.id + '">Cancel line</button></div>' : '') + '</td></tr>';
   });
   const editable = mineOrAdmin && (o.lines || []).some((l) => ['pending', 'production', 'ready'].includes(l.status));
   h += '</tbody></table></div>' + (editable ? '<div class="bar" style="margin-top:6px"><div class="f"><label for="ap-' + esc(o.id) + '">Add a product missed from this order</label><select id="ap-' + esc(o.id) + '">' + cat().filter((x) => x.active !== false && x.kind !== 'supply').map((x) => '<option value="' + esc(x.code) + '">' + esc(x.name) + ' (' + esc(x.code) + ')</option>').join('') + '</select></div><div class="f"><label for="an-' + esc(o.id) + '">Cases</label><input class="qty" type="number" min="1" id="an-' + esc(o.id) + '" value="1"></div><button class="btn sm" data-act="addline" data-oid="' + esc(o.id) + '">Add to order</button></div>' : '') + (o.notes ? '<p class="small"><b>Notes:</b> ' + esc(o.notes) + '</p>' : '') +
@@ -533,7 +533,8 @@ function applyParsedInvoice(res, fileName) {
   S.inv.lines = res.lines; S.inv.bad = res.bad || []; S.inv.file = fileName || 'pasted lines'; S.invMsg = '';
   if (res.inv && !S.inv.no) S.inv.no = res.inv;
   if (res.date && !S.inv.date) S.inv.date = res.date;
-  const st = res.store && matchStore(res.store); if (st) S.inv.store = st.id;
+  const st = res.store && matchStore(res.store); if (st && S.admin) S.inv.store = st.id;
+  if (!S.admin) S.inv.store = S.me.storeId;
 }
 async function loadInvoiceFile(file) {
   if (!window.XLSX) return toast('The spreadsheet reader did not load. Check your connection and try again.');
@@ -564,11 +565,12 @@ function invPreview() {
 }
 function invFree() { const m = {}; (S.inv.lines || []).forEach((l) => { if (l.price === 0) m[l.code] = (m[l.code] || 0) + l.cases; }); return Object.keys(m).sort().map((c) => ({ code: c, cases: m[c] })); }
 function invPanel() {
-  if (!S.admin) return '';
+  if (!S.admin && !S.me.storeId) return '';
+  if (!S.admin) S.inv.store = S.me.storeId;
   const I = S.inv, stores = S.settings.stores.slice().sort((a, b) => a.name.localeCompare(b.name));
   let h = '<details class="card" data-keep="invpanel" ' + (I.lines || S.invMsg || S.open.invpanel ? 'open' : '') + '><summary style="cursor:pointer"><b>Record a factory invoice or credit note</b> <span class="muted small">an invoice clears what was delivered; a credit note cancels what will not be supplied</span></summary>';
   if (S.invMsg) h += '<div class="banner info" style="margin-top:8px">' + esc(S.invMsg) + '</div>';
-  h += '<div class="bar" style="margin-top:8px"><div class="f"><label for="invstore">Store</label><select id="invstore" data-act="invstore">' + stores.map((s) => '<option value="' + esc(s.id) + '"' + (I.store === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></div>' +
+  h += '<div class="bar" style="margin-top:8px">' + (S.admin ? '<div class="f"><label for="invstore">Store</label><select id="invstore" data-act="invstore">' + stores.map((s) => '<option value="' + esc(s.id) + '"' + (I.store === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></div>' : '<div class="f"><label>Store</label><div style="padding:7px 0"><b>' + esc(storeName(S.me.storeId)) + '</b></div></div>') +
     '<div class="f"><label for="invkind">Type</label><select id="invkind" data-act="invkind"><option value="invoice"' + (I.kind === 'invoice' ? ' selected' : '') + '>Tax invoice (delivered)</option><option value="credit"' + (I.kind === 'credit' ? ' selected' : '') + '>Credit note (factory will not supply)</option></select></div>' +
     '<div class="f"><label for="invno">Document number</label><input id="invno" data-act="invno" type="text" value="' + esc(I.no) + '" placeholder="e.g. IN737758" style="width:140px"></div>' +
     '<div class="f"><label for="invdate">Invoice date</label><input id="invdate" data-act="invdate" type="date" value="' + esc(I.date) + '"></div></div>' +
@@ -610,7 +612,7 @@ function viewMine() {
   if (!S.me.storeId) return '<div class="banner">Choose your store at the top to see its orders.</div>';
   const list = S.orders.filter((o) => o.storeId === S.me.storeId).sort((a, b) => b.createdAt - a.createdAt);
   const open = list.filter((o) => !['done', 'cancelled'].includes(orderStatus(o))), closed = list.filter((o) => ['done', 'cancelled'].includes(orderStatus(o)));
-  return outstandingTable(S.me.storeId) + '<h2 style="margin:10px 0">Open orders for ' + esc(storeName(S.me.storeId)) + '</h2>' +
+  return outstandingTable(S.me.storeId) + (S.admin ? '' : invPanel()) + '<h2 style="margin:10px 0">Open orders for ' + esc(storeName(S.me.storeId)) + '</h2>' +
     (open.length ? open.map((o) => orderCard(o, S.admin)).join('') : '<div class="empty">' + (list.length ? 'No open orders. Everything has been delivered.' : 'No orders yet.') + '</div>') +
     (closed.length ? '<details style="margin-top:12px" data-keep="closed"' + (S.open.closed ? ' open' : '') + '><summary class="muted" style="cursor:pointer">Delivered and cancelled orders (' + closed.length + ')</summary>' + closed.map((o) => orderCard(o, S.admin)).join('') + '</details>' : '');
 }
@@ -757,6 +759,7 @@ document.addEventListener('click', async (e) => {
   else if (act === 'invpaste') { const ta = $('#invtext'); S.inv.text = ta ? ta.value : S.inv.text; applyParsedInvoice(readPastedInvoice(S.inv.text), 'pasted lines'); draw(true); }
   else if (act === 'invdiscard') { S.inv = Object.assign(S.inv, { lines: null, bad: [], file: '', text: '', no: '', date: '' }); draw(true); }
   else if (act === 'invapply') {
+    if (!S.admin) S.inv.store = S.me.storeId;
     if (!S.inv.no.trim()) return toast('Enter the document number first.');
     if (!S.inv.lines || !S.inv.lines.length) return;
     const pv = invPreview(), clr = pv.reduce((a, r) => a + r.clr, 0), ex = pv.reduce((a, r) => a + r.extra, 0);
@@ -774,6 +777,13 @@ document.addEventListener('click', async (e) => {
   }
   else if (act === 'savecases') { const v = Number(($('#ec-' + b.dataset.lid) || {}).value); if (!(v >= 1) || v % 1) return toast('Enter a whole number of cases, 1 or more.'); await run(sb.rpc('set_line_cases', { p_line: Number(b.dataset.lid), p_cases: v }), 'Cases updated.'); }
   else if (act === 'addline') { const sel = $('#ap-' + b.dataset.oid), n = Number(($('#an-' + b.dataset.oid) || {}).value); if (!sel || !(n >= 1) || n % 1) return toast('Choose a product and a whole number of cases.'); await run(sb.rpc('add_line', { p_order: b.dataset.oid, p_code: sel.value, p_cases: n }), 'Product added.'); }
+  else if (act === 'receive') {
+    const v = Number(($('#rv-' + b.dataset.lid) || {}).value), mx = Number(b.dataset.max);
+    if (!(v >= 1) || v % 1) return toast('Enter a whole number of cases received.');
+    if (v > mx) return toast('That is more than the ' + mx + ' cases on this line. Record extra cases with an invoice.');
+    if (!confirm('Mark ' + v + ' of ' + mx + ' cases of ' + b.dataset.code + ' as received? They will come off the outstanding total' + (v < mx ? ' and ' + (mx - v) + ' will stay outstanding.' : '.'))) return;
+    await run(sb.rpc('receive_line', { p_line: Number(b.dataset.lid), p_cases: v }), v >= mx ? 'Marked as received.' : v + ' of ' + mx + ' received. The rest is still outstanding.');
+  }
   else if (act === 'cancelline') { if (!confirm('Remove this line from the order?')) return; await run(sb.rpc('cancel_line', { p_line: Number(b.dataset.lid) }), 'Line removed.'); }
   else if (act === 'upapply') {
     const r = upLines(); if (!r.lines.length) return;

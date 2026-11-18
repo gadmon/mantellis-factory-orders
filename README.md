@@ -67,3 +67,9 @@ To reset a forgotten password, the person uses "Forgot password" on the sign-in 
 
 ## Filled progress
 When HQ marks an order line "In production", a **Save filled** box appears beside it (HQ view). HQ types how many cases have been filled so far; the franchisee sees a progress bar and "N of M cases filled" on the order and on each line. Ready/collected lines show as fully filled.
+
+## Manual adjustments (stores and HQ)
+- On any open order line, enter the cases received and press **Received**. Full receipts clear the line, part receipts leave the rest outstanding. Cases, add a missed product, cancel a line and delete an order were already available to both HQ and the store.
+- A store login can record a factory invoice or credit note for its own store (My orders, Record a factory invoice or credit note) and undo it. HQ can still do this for any store under All orders.
+- These need `migrations/2026-11-18-manual-adjustments.sql` to be run once in the Supabase SQL Editor. It is safe to run again.
+
