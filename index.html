@@ -13,16 +13,17 @@
   --accent:#0e6b5c; --accent-ink:#ffffff; --accent-soft:#e1f0ec;
   --good:#2a7d3f; --good-soft:#e2f2e6; --warn:#a86300; --warn-soft:#fbefd5; --crit:#b3261e; --crit-soft:#fbe4e2;
   --display:'Bricolage Grotesque','Hanken Grotesk',system-ui,sans-serif; --body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --lc-collection:#1f63c2; --lc-corporate:#7a3fc0; --lc-hamper:#c2410c; --lc-other:#5f6f6b;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#121a18; --panel:#1b2623; --ink:#e6eeeb; --muted:#9aaca7; --line:#2d3b37;
   --accent:#4cc3ad; --accent-ink:#0b1a17; --accent-soft:#1f3a34;
-  --good:#6cd08a; --good-soft:#1e3626; --warn:#f0b14a; --warn-soft:#3b2f16; --crit:#ff8d85; --crit-soft:#41211f; color-scheme:dark;}}
+  --good:#6cd08a; --good-soft:#1e3626; --warn:#f0b14a; --warn-soft:#3b2f16; --crit:#ff8d85; --crit-soft:#41211f; --lc-collection:#6aa6ff; --lc-corporate:#b794f4; --lc-hamper:#ff9a62; --lc-other:#9aaca7; color-scheme:dark;}}
 :root[data-theme="dark"]{
   --bg:#121a18; --panel:#1b2623; --ink:#e6eeeb; --muted:#9aaca7; --line:#2d3b37;
   --accent:#4cc3ad; --accent-ink:#0b1a17; --accent-soft:#1f3a34;
-  --good:#6cd08a; --good-soft:#1e3626; --warn:#f0b14a; --warn-soft:#3b2f16; --crit:#ff8d85; --crit-soft:#41211f; color-scheme:dark;}
+  --good:#6cd08a; --good-soft:#1e3626; --warn:#f0b14a; --warn-soft:#3b2f16; --crit:#ff8d85; --crit-soft:#41211f; --lc-collection:#6aa6ff; --lc-corporate:#b794f4; --lc-hamper:#ff9a62; --lc-other:#9aaca7; color-scheme:dark;}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.4}
 h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
@@ -78,6 +79,14 @@ td .meta{color:var(--muted);font-size:12px}
 .chip.go{background:var(--good-soft);color:var(--good)} .chip.near{background:var(--warn-soft);color:var(--warn)}
 .chip.far{background:var(--bg);color:var(--muted);border:1px solid var(--line)} .chip.info{background:var(--accent-soft);color:var(--accent)}
 .chip.crit{background:var(--crit-soft);color:var(--crit)}
+.lc-collection{--lc:var(--lc-collection)} .lc-corporate{--lc:var(--lc-corporate)} .lc-hamper{--lc:var(--lc-hamper)} .lc-other{--lc:var(--lc-other)}
+.lp{display:inline-block;border-radius:10px;padding:0 8px;font-size:11px;font-weight:700;white-space:nowrap;color:var(--lc);background:color-mix(in srgb,var(--lc) 14%,transparent);border:1px solid color-mix(in srgb,var(--lc) 45%,transparent)}
+tr.grp td{background:color-mix(in srgb,var(--lc) 14%,var(--panel));border-left:6px solid var(--lc);border-bottom:1px solid color-mix(in srgb,var(--lc) 45%,var(--line));padding:9px 10px}
+tr.grp .gt{font-family:var(--display);font-size:16px;font-weight:700;color:var(--lc)}
+tr.grp .gs{color:var(--muted);font-size:13px;margin-left:10px}
+tr.pr td:first-child{border-left:6px solid var(--lc)}
+.fill.lc{background:var(--lc)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:0 0 10px;font-size:13px;color:var(--muted)}
 .qty{width:70px}
 .ordprog{display:flex;align-items:center;gap:8px;min-width:200px}.ordprog .track{width:110px}
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
@@ -114,7 +123,7 @@ const CATALOG_FALLBACK = [];
 const DAY = 86400000, WEEK = 7 * DAY;
 const S = {
   catalog: [], catalogFromDb: false, pars: {}, parsLoaded: false,
-  settings: { defaultPar: 10, vat: 15, deliveryFee: 0, leadDays: 10, closeFrom: '2026-11-23', reopen: '2027-01-05', lastDelivery: '2026-12-20', ratePerKg: 0, stores: [{ id: 'belvedere-square', name: 'Belvedere Square', fee: null, region: 'Western Cape' },{ id: 'blaauwberg', name: 'Blaauwberg', fee: null, region: 'Western Cape' },{ id: 'durbanville', name: 'Durbanville', fee: null, region: 'Western Cape' },{ id: 'fish-hoek', name: 'Fish Hoek', fee: null, region: 'Western Cape' },{ id: 'george', name: 'George', fee: null, region: 'Western Cape' },{ id: 'kenilworth-centre', name: 'Kenilworth Centre', fee: null, region: 'Western Cape' },{ id: 'mossel-bay', name: 'Mossel Bay', fee: null, region: 'Western Cape' },{ id: 'mutualpark', name: 'Mutualpark', fee: null, region: 'Western Cape' },{ id: 'paarl', name: 'Paarl', fee: null, region: 'Western Cape' },{ id: 'palmyra-junction', name: 'Palmyra Junction', fee: null, region: 'Western Cape' },{ id: 'rylands', name: 'Rylands', fee: null, region: 'Western Cape' },{ id: 'sanlam-direct', name: 'Sanlam Direct', fee: null, region: 'Western Cape' },{ id: 'somerset-west', name: 'Somerset West', fee: null, region: 'Western Cape' },{ id: 'stellenbosch', name: 'Stellenbosch', fee: null, region: 'Western Cape' },{ id: 'westlake', name: 'Westlake', fee: null, region: 'Western Cape' },{ id: 'fourways', name: 'Fourways', fee: null, region: 'Gauteng' },{ id: 'simmonds-street', name: 'Simmonds Street', fee: null, region: 'Gauteng' },{ id: 'ballito', name: 'Ballito', fee: null, region: 'KwaZulu-Natal' },{ id: 'kloof', name: 'Kloof', fee: null, region: 'KwaZulu-Natal' }] },
+  settings: { defaultPar: 10, vat: 15, deliveryFee: 0, leadDays: 10, closeFrom: '2026-11-30', reopen: '2027-01-05', lastDelivery: '2026-12-20', ratePerKg: 0, stores: [{ id: 'belvedere-square', name: 'Belvedere Square', fee: null, region: 'Western Cape' },{ id: 'blaauwberg', name: 'Blaauwberg', fee: null, region: 'Western Cape' },{ id: 'durbanville', name: 'Durbanville', fee: null, region: 'Western Cape' },{ id: 'fish-hoek', name: 'Fish Hoek', fee: null, region: 'Western Cape' },{ id: 'george', name: 'George', fee: null, region: 'Western Cape' },{ id: 'kenilworth-centre', name: 'Kenilworth Centre', fee: null, region: 'Western Cape' },{ id: 'mossel-bay', name: 'Mossel Bay', fee: null, region: 'Western Cape' },{ id: 'mutualpark', name: 'Mutualpark', fee: null, region: 'Western Cape' },{ id: 'paarl', name: 'Paarl', fee: null, region: 'Western Cape' },{ id: 'palmyra-junction', name: 'Palmyra Junction', fee: null, region: 'Western Cape' },{ id: 'rylands', name: 'Rylands', fee: null, region: 'Western Cape' },{ id: 'sanlam-direct', name: 'Sanlam Direct', fee: null, region: 'Western Cape' },{ id: 'somerset-west', name: 'Somerset West', fee: null, region: 'Western Cape' },{ id: 'stellenbosch', name: 'Stellenbosch', fee: null, region: 'Western Cape' },{ id: 'westlake', name: 'Westlake', fee: null, region: 'Western Cape' },{ id: 'fourways', name: 'Fourways', fee: null, region: 'Gauteng' },{ id: 'simmonds-street', name: 'Simmonds Street', fee: null, region: 'Gauteng' },{ id: 'ballito', name: 'Ballito', fee: null, region: 'KwaZulu-Natal' },{ id: 'kloof', name: 'Kloof', fee: null, region: 'KwaZulu-Natal' }] },
   orders: [], board: {}, hist: [], profiles: [], profile: null, auth: 'boot', authMsg: '', authEm: '', cart: {}, tab: 'board',
   f: { q: '', list: 'all', state: 'all', sort: 'close' },
   of: { store: 'all', status: 'open' }, aview: 'product',
@@ -139,10 +148,10 @@ function windowBanner() {
   const s = S.settings; if (s.recordOnly) return '<div class="banner info">Record-only mode is on: orders can be entered at any time, to record what has already been sent to the factory.</div>';
   if (!s.closeFrom || !s.reopen) return '';
   const now = Date.now(), cf = Date.parse(s.closeFrom + 'T00:00:00Z'), ro = Date.parse(s.reopen + 'T00:00:00Z'), ld = s.lastDelivery ? Date.parse(s.lastDelivery + 'T00:00:00Z') : 0;
-  const dl = ld ? ' Stock that is ready is collected or delivered until ' + fdate(ld) + '. A product must start production by ' + fdate(subBD(ld, s.leadDays)) + ' to be ready by then; anything later is held until January.' : '';
+  const dl = ' Every order goes straight into production and takes ' + s.leadDays + ' business days.' + (ld ? ' Stock that is ready is collected or delivered until ' + fdate(ld) + '.' : '');
   if (isClosed()) return '<div class="banner">The factory is closed to new orders until ' + fdate(ro) + '.' + dl + '</div>';
   const left = Math.ceil((cf - now) / DAY);
-  if (left > 0 && left <= 60) return '<div class="banner">The factory stops taking new orders on ' + fdate(cf) + ' (' + left + ' day' + (left === 1 ? '' : 's') + ' left) and reopens on ' + fdate(ro) + '. Products still short of par when it closes will not be produced until January. Production takes ' + s.leadDays + ' business days from the day it starts.' + dl + '</div>';
+  if (left > 0 && left <= 60) return '<div class="banner">The factory stops taking new orders on ' + fdate(cf) + ' (' + left + ' day' + (left === 1 ? '' : 's') + ' left) and reopens on ' + fdate(ro) + '.' + dl + '</div>';
   return '';
 }
 const LISTS = { collection: 'Collection', corporate: 'Corporate', hamper: 'Hamper' };
@@ -299,63 +308,65 @@ function drawHeader() {
   $('#tabs').innerHTML = tabsFor().map((t) => '<button role="tab" data-act="tab" data-v="' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '">' + t[1] + '</button>').join('');
 }
 
+const LIST_ORDER = ['collection', 'corporate', 'hamper', 'other'];
+const LIST_NAME = { collection: 'Collection', corporate: 'Corporate', hamper: 'Hamper', other: 'Other' };
+const LIST_NOTE = { collection: 'Collection invoice', corporate: 'Corporate invoice', hamper: 'Hamper invoice', other: '' };
+const groupOf = (p) => (S.f.list !== 'all' && p.lists.includes(S.f.list)) ? S.f.list : (LIST_ORDER.find((k) => p.lists.includes(k)) || 'other');
+const listPills = (p) => (p.lists.length ? p.lists : ['other']).map((k) => '<span class="lp lc-' + k + '">' + LIST_NAME[k] + '</span>').join(' ');
 function boardRows() {
   const q = S.f.q.trim().toLowerCase();
-  let rows = cat().filter((p) => p.active !== false).map((p) => ({ p, s: stateOf(p) }));
+  let rows = cat().filter((p) => p.active !== false).map((p) => ({ p, s: stateOf(p), g: groupOf(p) }));
   rows = rows.filter(({ p, s }) =>
     (S.f.list === 'all' || p.lists.includes(S.f.list)) &&
-    (S.f.state === 'all' || (S.f.state === 'open' ? s.pend > 0 : s.key === S.f.state)) &&
+    (S.f.state === 'all' || (S.f.state === 'open' && s.pend > 0)) &&
     (!q || (p.code + ' ' + p.name + ' ' + p.category).toLowerCase().includes(q)));
-  const rank = { go: 0, near: 1, far: 2, stock: 3 };
-  if (S.f.sort === 'close') rows.sort((a, b) => (b.s.pend > 0) - (a.s.pend > 0) || rank[a.s.key] - rank[b.s.key] || b.s.pct - a.s.pct || a.p.code.localeCompare(b.p.code));
-  else if (S.f.sort === 'name') rows.sort((a, b) => a.p.name.localeCompare(b.p.name));
-  else rows.sort((a, b) => a.p.code.localeCompare(b.p.code, undefined, { numeric: true }));
+  const byGroup = (a, b) => LIST_ORDER.indexOf(a.g) - LIST_ORDER.indexOf(b.g);
+  if (S.f.sort === 'name') rows.sort((a, b) => byGroup(a, b) || a.p.name.localeCompare(b.p.name));
+  else if (S.f.sort === 'code') rows.sort((a, b) => byGroup(a, b) || a.p.code.localeCompare(b.p.code, undefined, { numeric: true }));
+  else rows.sort((a, b) => byGroup(a, b) || (b.s.pend > 0) - (a.s.pend > 0) || a.p.code.localeCompare(b.p.code, undefined, { numeric: true }));
   return rows;
-}
-function lastChance() {
-  const s = S.settings; if (!s.closeFrom || isClosed()) return '';
-  const left = Math.ceil((Date.parse(s.closeFrom + 'T00:00:00Z') - Date.now()) / DAY); if (left <= 0 || left > 14) return '';
-  const rows = cat().filter((p) => p.active !== false).map((p) => ({ p, s: stateOf(p) })).filter((r) => r.s.pend > 0 && (r.s.key === 'near' || r.s.key === 'far')).sort((a, b) => b.s.pct - a.s.pct).slice(0, 8);
-  if (!rows.length) return '';
-  return '<div class="card"><h2>Last chance before orders close</h2><p class="small muted">' + left + ' day' + (left === 1 ? '' : 's') + ' left. These products have orders waiting but are still short of par. Adding the missing cases gets them produced before the break.</p><div class="scroll"><table><tbody>' +
-    rows.map(({ p, s }) => '<tr><td><div class="nm">' + esc(p.name) + '</div><div class="meta">' + esc(p.code) + '</div></td><td class="num">' + num(s.pend) + ' of ' + s.par + '</td><td class="num">' + money(s.left * p.casePrice) + '</td><td><button class="btn sm" data-act="topup" data-code="' + esc(p.code) + '" data-n="' + s.left + '">+' + num(s.left) + ' cases to trigger</button></td></tr>').join('') + '</tbody></table></div></div>';
 }
 function viewBoard() {
   derive();
-  const all = cat().filter((p) => p.active !== false).map(stateOf);
-  const go = all.filter((s) => s.key === 'go').length, near = all.filter((s) => s.key === 'near').length;
   const rows = boardRows();
-  const anyPlaceholder = cat().some(isPlaceholderPar);
-  let h = windowBanner() + lastChance();
-  if (anyPlaceholder) h += '<div class="banner">Production pars are placeholders (' + S.settings.defaultPar + ' cases) until the factory confirms the real number for each product. HQ sets them in Setup.</div>';
+  const readyBy = addBD(Date.now(), S.settings.leadDays), heldToJan = afterLastDelivery(readyBy);
+  const onOrder = cat().filter((p) => p.active !== false && (S.d.pend[p.code] || 0) > 0).length;
+  let h = windowBanner();
   h += '<div class="tiles">' +
-    '<div class="tile"><div class="n">' + go + '</div><div class="l">Products at or over par, in the production queue</div></div>' +
-    '<div class="tile"><div class="n">' + near + '</div><div class="l">Products within 40% of par</div></div>' +
-    '<div class="tile"><div class="n">' + num(S.d.openCases) + '</div><div class="l">' + (S.admin ? 'Cases on open orders' : 'Cases waiting for production, all stores') + '</div></div>' +
+    '<div class="tile"><div class="n">' + onOrder + '</div><div class="l">Products on order</div></div>' +
+    '<div class="tile"><div class="n">' + num(S.d.openCases) + '</div><div class="l">' + (S.admin ? 'Cases on open orders' : 'Cases on order, all stores') + '</div></div>' +
     '<div class="tile"><div class="n">' + money(S.d.openValue) + '</div><div class="l">' + (S.admin ? 'Open order value, excl. VAT' : 'Your open order value, excl. VAT') + '</div></div>' +
-    '<div class="tile"><div class="n" style="font-size:20px">' + fdate(addBD(Date.now(), S.settings.leadDays)) + '</div><div class="l">Ready by, if a product reaches par and starts today (' + S.settings.leadDays + ' business days)</div></div></div>';
+    '<div class="tile"><div class="n" style="font-size:20px">' + fdate(readyBy) + '</div><div class="l">Ready by, if ordered today (' + S.settings.leadDays + ' business days)' + (heldToJan ? '. After the ' + fdate(Date.parse(S.settings.lastDelivery + 'T00:00:00Z')) + ' cut-off, so held to January' : '') + '</div></div></div>';
   h += '<div class="bar">' +
     '<div class="f"><label for="fq">Search</label><input id="fq" data-act="fq" value="' + esc(S.f.q) + '" placeholder="Code or name"></div>' +
     '<div class="f"><label for="fl">Price list</label><select id="fl" data-act="fl"><option value="all">All lists</option>' + Object.keys(LISTS).map((k) => '<option value="' + k + '"' + (S.f.list === k ? ' selected' : '') + '>' + LISTS[k] + '</option>').join('') + '</select></div>' +
-    '<div class="f"><label for="fs">Show</label><select id="fs" data-act="fs">' + [['all', 'Everything'], ['open', 'Has open orders'], ['go', 'In production queue'], ['near', 'Close to par'], ['far', 'Waiting']].map((o) => '<option value="' + o[0] + '"' + (S.f.state === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></div>' +
-    '<div class="f"><label for="fo">Sort</label><select id="fo" data-act="fo"><option value="close"' + (S.f.sort === 'close' ? ' selected' : '') + '>Closest to production</option><option value="code"' + (S.f.sort === 'code' ? ' selected' : '') + '>Code</option><option value="name"' + (S.f.sort === 'name' ? ' selected' : '') + '>Name</option></select></div>' +
+    '<div class="f"><label for="fs">Show</label><select id="fs" data-act="fs">' + [['all', 'Everything'], ['open', 'Has open orders']].map((o) => '<option value="' + o[0] + '"' + (S.f.state === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></div>' +
+    '<div class="f"><label for="fo">Sort within each list</label><select id="fo" data-act="fo"><option value="open"' + (S.f.sort !== 'code' && S.f.sort !== 'name' ? ' selected' : '') + '>On order first</option><option value="code"' + (S.f.sort === 'code' ? ' selected' : '') + '>Code</option><option value="name"' + (S.f.sort === 'name' ? ' selected' : '') + '>Name</option></select></div>' +
     '<div class="small muted">' + rows.length + ' products</div><button class="btn ghost sm" data-act="tab" data-v="order">Upload an order sheet</button></div>';
+  h += '<div class="legend"><b>Colour key</b>' + LIST_ORDER.filter((k) => k !== 'other' || rows.some((r) => r.g === 'other')).map((k) => '<span class="lp lc-' + k + '">' + LIST_NAME[k] + '</span>').join(' ') + '<span>Products are grouped by the invoice list they are ordered from.</span></div>';
   if (!rows.length) return h + '<div class="empty">No products match.</div>';
-  h += '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">Case price</th><th>Progress to par</th><th class="num">Your store</th><th>Add cases</th></tr></thead><tbody>';
-  rows.slice(0, 200).forEach(({ p, s }) => {
+  h += '<div class="scroll"><table><thead><tr><th>Product</th><th class="num">Case price</th><th>On order</th><th class="num">Your store</th><th>Add cases</th></tr></thead><tbody>';
+  const shown = rows.slice(0, 400);
+  let cur = null;
+  shown.forEach(({ p, s, g }) => {
+    if (g !== cur) {
+      cur = g;
+      const grp = rows.filter((r) => r.g === g), withOrders = grp.filter((r) => r.s.pend > 0), cases = withOrders.reduce((n, r) => n + r.s.pend, 0);
+      h += '<tr class="grp lc-' + g + '"><td colspan="5"><span class="gt">' + LIST_NAME[g] + '</span><span class="gs">' + (LIST_NOTE[g] ? LIST_NOTE[g] + ' · ' : '') + grp.length + (grp.length === 1 ? ' product' : ' products') + ' · ' + (withOrders.length ? '<b>' + withOrders.length + ' on order, ' + num(cases) + (cases === 1 ? ' case' : ' cases') + '</b>' : 'none on order') + '</span></td></tr>';
+    }
     const mine = S.d.mine[p.code] || 0, inCart = S.cart[p.code] || 0;
+    const ready = addBD(Date.now(), S.settings.leadDays);
     const bar = s.key === 'stock' ? '<span class="chip far">Ships from stock</span>' :
-      '<div class="track" role="img" aria-label="' + s.pend + ' of ' + s.par + ' cases"><div class="fill ' + s.key + '" style="width:' + Math.round(s.pct * 100) + '%"></div></div>' +
-      '<div class="ptxt"><b>' + num(s.pend) + '</b> of ' + s.par + (isPlaceholderPar(p) ? '*' : '') + ' cases' + (S.d.stc[p.code] ? ' · ' + S.d.stc[p.code] + (S.d.stc[p.code] === 1 ? ' store' : ' stores') + ' waiting' : '') + ' · ' + (s.key === 'go' ? '<span class="chip go">Production queue · ready ~' + fdate(addBD(Date.now(), S.settings.leadDays)) + '</span>' : '<b>' + num(s.left) + '</b> to go') + '</div>';
-    const topUp = s.left > 0 ? '<button class="btn ghost sm" data-act="topup" data-code="' + esc(p.code) + '" data-n="' + s.left + '" title="Adds the cases still needed to reach par">+' + num(s.left) + ' to trigger</button>' : '';
-    h += '<tr><td><div class="nm">' + esc(p.name) + '</div><div class="meta">' + esc(p.code) + ' · ' + esc(p.pack) + (p.perCase ? ' · ' + esc(p.perCase) + (/^\d+$/.test(p.perCase) ? ' per case' : '') : '') + ' · ' + p.lists.map((l) => LISTS[l]).join(' / ') + '</div></td>' +
+      s.pend > 0 ? '<div class="track" role="img" aria-label="' + s.pend + ' cases on order"><div class="fill lc" style="width:100%"></div></div>' +
+        '<div class="ptxt"><b>' + num(s.pend) + '</b> ' + (s.pend === 1 ? 'case' : 'cases') + ' on order' + (S.d.stc[p.code] ? ' · ' + S.d.stc[p.code] + (S.d.stc[p.code] === 1 ? ' store' : ' stores') : '') + ' · <span class="lp lc-' + g + '">Ready ~' + fdate(ready) + (afterLastDelivery(ready) ? ', held to January' : '') + '</span></div>' :
+        '<span class="muted small">Not on order</span>';
+    h += '<tr class="pr lc-' + g + '"><td><div class="nm">' + esc(p.name) + '</div><div class="meta">' + esc(p.code) + ' · ' + esc(p.pack) + (p.perCase ? ' · ' + esc(p.perCase) + (/^\d+$/.test(p.perCase) ? ' per case' : '') : '') + ' · ' + listPills(p) + '</div></td>' +
       '<td class="num">' + money(p.casePrice) + '</td><td class="prog">' + bar + '</td>' +
       '<td class="num">' + (mine ? num(mine) : '<span class="muted">0</span>') + '</td>' +
-      '<td><div class="row"><input class="qty" type="number" min="1" step="1" inputmode="numeric" id="q-' + esc(p.code) + '" aria-label="Cases of ' + esc(p.name) + '" value="' + (inCart || '') + '" data-act="cartq" data-code="' + esc(p.code) + '" placeholder="0">' + topUp + '</div></td></tr>';
+      '<td><div class="row"><input class="qty" type="number" min="1" step="1" inputmode="numeric" id="q-' + esc(p.code) + '" aria-label="Cases of ' + esc(p.name) + '" value="' + (inCart || '') + '" data-act="cartq" data-code="' + esc(p.code) + '" placeholder="0"></div></td></tr>';
   });
   h += '</tbody></table></div>';
-  if (rows.length > 200) h += '<div class="small muted" style="margin-top:6px">Showing the first 200. Use search to narrow.</div>';
-  if (anyPlaceholder) h += '<div class="small muted" style="margin-top:8px">* placeholder par</div>';
+  if (rows.length > shown.length) h += '<div class="small muted" style="margin-top:6px">Showing the first ' + shown.length + '. Use search to narrow.</div>';
   return h;
 }
 
@@ -446,15 +457,14 @@ function uploadCard() {
 function viewOrder() {
   derive();
   const p = prodMap(), codes = Object.keys(S.cart).filter((c) => S.cart[c] > 0 && p[c]);
-  if (!codes.length) return uploadCard() + '<div class="card"><h2>New order</h2><p class="muted">Your order is empty. Enter case quantities on the Production board, or use "to trigger" to add exactly what a product needs to reach par.</p><button class="btn" data-act="tab" data-v="board">Go to the board</button></div>';
+  if (!codes.length) return uploadCard() + '<div class="card"><h2>New order</h2><p class="muted">Your order is empty. Enter case quantities on the Production board.</p><button class="btn" data-act="tab" data-v="board">Go to the board</button></div>';
   const lines = codes.map((c) => ({ code: c, cases: S.cart[c], price: p[c].casePrice, status: 'pending' }));
   const t = orderTotals({ lines, method: S.method, fee: null });
   const early = addBD(Date.now(), S.settings.leadDays);
   let h = windowBanner() + uploadCard() + '<div class="grid2"><div class="card"><h2>Your order</h2><div class="scroll"><table><thead><tr><th>Product</th><th class="num">Cases</th><th class="num">Line total</th><th>Effect</th><th></th></tr></thead><tbody>';
   codes.forEach((c) => {
     const pr = p[c], par = parOf(pr), pend = S.d.pend[c] || 0, after = pend + S.cart[c];
-    const eff = par === 0 ? '<span class="muted small">Ships from stock</span>' :
-      pend >= par ? '<span class="chip go">Already queued</span>' : after >= par ? '<span class="chip go">Triggers production</span>' : '<span class="muted small">' + num(par - after) + ' still short of par</span>';
+    const eff = par === 0 ? '<span class="muted small">Ships from stock</span>' : '<span class="chip go">Goes into production</span>';
     h += '<tr><td><div class="nm">' + esc(pr.name) + '</div><div class="meta">' + esc(c) + '</div></td><td class="num"><input class="qty" type="number" min="0" step="1" aria-label="Cases of ' + esc(pr.name) + '" value="' + S.cart[c] + '" data-act="cartq2" data-code="' + esc(c) + '"></td><td class="num">' + money(S.cart[c] * pr.casePrice) + '</td><td>' + eff + '</td><td><button class="btn danger sm" data-act="rm" data-code="' + esc(c) + '">Remove</button></td></tr>';
   });
   h += '</tbody></table></div></div><div class="card"><h2>Delivery and totals</h2>' +
@@ -462,7 +472,7 @@ function viewOrder() {
     '<label><input type="radio" name="m" data-act="method" value="collect"' + (S.method === 'collect' ? ' checked' : '') + '> I will collect</label>' +
     '<label><input type="radio" name="m" data-act="method" value="deliver"' + (S.method === 'deliver' ? ' checked' : '') + '> Deliver to my store</label></div></fieldset>' +
     (S.method === 'deliver' ? '<p class="small muted">Delivery is charged by pallet weight. HQ weighs the pallet when the order is ready and adds the cost to your order. It is not in the total below.</p>' : '') + '<div class="bar"><div class="f"><label for="nb">Needed by (optional)</label><input id="nb" type="date" data-act="needby" value="' + esc(S.needBy) + '"></div></div>' +
-    (S.needBy && Date.parse(S.needBy + 'T00:00:00Z') < early ? '<div class="banner">Production takes ' + S.settings.leadDays + ' business days once a product reaches par, so the earliest possible ready date is ' + fdate(early) + '. Later if a product is still short of par.</div>' : '') + '<div class="f"><label class="small muted" for="nt">Notes for the factory</label><textarea id="nt" rows="2" data-act="notes" style="font-family:inherit">' + esc(S.notes) + '</textarea></div>' +
+    (S.needBy && Date.parse(S.needBy + 'T00:00:00Z') < early ? '<div class="banner">Production takes ' + S.settings.leadDays + ' business days, so the earliest possible ready date is ' + fdate(early) + '.</div>' : '') + '<div class="f"><label class="small muted" for="nt">Notes for the factory</label><textarea id="nt" rows="2" data-act="notes" style="font-family:inherit">' + esc(S.notes) + '</textarea></div>' +
     '<table class="tot" style="margin:10px 0"><tr><td>Products (excl. VAT)</td><td class="num">' + money(t.sub) + '</td></tr>' +
     (S.method === 'deliver' ? '<tr><td>Delivery</td><td class="num">Set by HQ</td></tr>' : '') +
     '<tr><td>VAT ' + num(S.settings.vat) + '%</td><td class="num">' + money(t.vat) + '</td></tr><tr><td>Total</td><td class="num">' + money(t.total) + '</td></tr></table>' +
